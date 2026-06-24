@@ -255,11 +255,28 @@ function isNationalTeamMatch(fixture) {
 }
 
 async function computeNationalPredictions(home, away) {
-  const [h2hRes, homeLast, awayLast] = await Promise.all([
-    apiGet(`/fixtures/headtohead?h2h=${home.id}-${away.id}&last=10`),
-    apiGet(`/fixtures?team=${home.id}&last=8`),
-    apiGet(`/fixtures?team=${away.id}&last=8`),
+  const today = new Date();
+  const oneYearAgo = new Date(today);
+  oneYearAgo.setFullYear(today.getFullYear() - 1);
+  const fromDate = oneYearAgo.toISOString().slice(0, 10);
+  const toDate = today.toISOString().slice(0, 10);
+
+  const [h2hRes, homeLastRaw, awayLastRaw] = await Promise.all([
+    apiGet(`/fixtures/headtohead?h2h=${home.id}-${away.id}&from=${fromDate}&to=${toDate}`),
+    apiGet(`/fixtures?team=${home.id}&from=${fromDate}&to=${toDate}`),
+    apiGet(`/fixtures?team=${away.id}&from=${fromDate}&to=${toDate}`),
   ]);
+
+  function recentFinished(matches, limit) {
+    return [...(matches || [])]
+      .filter(m => m.fixture.status.short === "FT" || m.fixture.status.short === "AET" || m.fixture.status.short === "PEN")
+      .sort((a, b) => new Date(b.fixture.date) - new Date(a.fixture.date))
+      .slice(0, limit);
+  }
+
+  const h2hMatches = recentFinished(h2hRes, 10);
+  const homeLast = recentFinished(homeLastRaw, 8);
+  const awayLast = recentFinished(awayLastRaw, 8);
 
   function formScore(matches, teamId) {
     if (!matches || matches.length === 0) return 0.5;
@@ -289,7 +306,7 @@ async function computeNationalPredictions(home, away) {
 
   const homeForm = formScore(homeLast, home.id);
   const awayForm = formScore(awayLast, away.id);
-  const h2h = h2hScore(h2hRes, home.id);
+  const h2h = h2hScore(h2hMatches, home.id);
 
   let pHome, pAway;
   if (h2h && h2h.total > 0) {
