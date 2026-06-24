@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pronos du jour</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #f4f1ea;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: 20px 14px 40px;
+    color: #2b2a27;
+  }
+  .wrap { max-width: 480px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 800; margin-bottom: 2px; }
+  .date { font-size: 13px; color: #8a8478; margin-bottom: 18px; }
+  .status { text-align: center; margin-top: 60px; color: #8a8478; font-size: 14px; }
+  .error-box {
+    background: #fdf0ef; border: 1px solid #f3c9c5; border-radius: 10px;
+    padding: 12px; margin-bottom: 16px; font-size: 13px; color: #9b2c2c;
+  }
+  .refresh-btn {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 16px;
+    background: none; border: none; color: #8a8478; font-size: 12px; cursor: pointer; padding: 0;
+  }
+  .card {
+    background: #fffdf8; border: 1px solid #e8e4d9; border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 12px;
+  }
+  .card-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 6px; }
+  .league { font-size: 11px; color: #8a8478; text-transform: uppercase; letter-spacing: 0.4px; }
+  .time { font-size: 12px; color: #8a8478; font-weight: 600; }
+  .teams { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+  .teams img { width: 22px; height: 22px; object-fit: contain; }
+  .team-name { font-weight: 600; font-size: 15px; }
+  .vs { color: #b0aa9c; font-size: 13px; }
+  .pred-btn {
+    width: 100%; padding: 8px 0; background: #2b2a27; color: #fffdf8;
+    border: none; border-radius: 8px; font-size: 13px; font-weight: 600;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px;
+  }
+  .predictions { margin-top: 12px; display: flex; flex-direction: column; gap: 10px; }
+  .pred-item { padding-top: 10px; border-top: 1px solid #f0ece1; }
+  .pred-item:first-child { padding-top: 0; border-top: none; }
+  .pred-type { font-size: 11px; color: #8a8478; text-transform: uppercase; letter-spacing: 0.3px; }
+  .pred-pick { font-size: 14px; font-weight: 600; margin: 4px 0; }
+  .bar-row { display: flex; align-items: center; gap: 8px; }
+  .bar-bg { flex: 1; height: 6px; background: #e8e4d9; border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; }
+  .bar-pct { font-size: 13px; font-weight: 700; min-width: 38px; text-align: right; }
+  .footer-note { font-size: 11px; color: #b0aa9c; text-align: center; margin-top: 20px; line-height: 1.5; }
+  .spin { animation: spin 1s linear infinite; display: inline-block; }
+  @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>⚽ Pronos du jour</h1>
+  <div class="date" id="dateLabel"></div>
+  <div id="status" class="status">⏳ Chargement des matchs du jour...</div>
+  <div id="errorBox"></div>
+  <button id="refreshBtn" class="refresh-btn" style="display:none">🔄 Rafraîchir les matchs</button>
+  <div id="matchList"></div>
+  <div id="footerNote"></div>
+</div>
+
+<script>
+const API_BASE = "https://Sadquiy35--2a7ef21a6f6f11f1a7161607ee4eb77e.web.val.run";
+
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+async function apiGet(path) {
+  const res = await fetch(`${API_BASE}${path}`);
+  if (!res.ok) throw new Error(`Erreur API (${res.status})`);
+  const json = await res.json();
+  if (json.errors && Object.keys(json.errors).length > 0) {
+    throw new Error(JSON.stringify(json.errors));
+  }
+  return json.response;
+}
+
+function safe(v, fallback = 0) {
+  return (typeof v === "number" && !isNaN(v)) ? v : fallback;
+}
+
+function computePredictions(homeStats, awayStats, homeName, awayName) {
+  const predictions = [];
+
+  const homeGF = safe(homeStats?.goals?.for?.average?.total);
+  const homeGA = safe(homeStats?.goals?.against?.average?.total);
+  const awayGF = safe(awayStats?.goals?.for?.average?.total);
+  const awayGA = safe(awayStats?.goals?.against?.average?.total);
+
+  const homeWinPct = safe(homeStats?.fixtures?.wins?.total) / Math.max(1, safe(homeStats?.fixtures?.played?.total, 1));
+  const awayWinPct = safe(awayStats?.fixtures?.wins?.total) / Math.max(1, safe(awayStats?.fixtures?.played?.total, 1));
+
+  const homeAttack = (homeGF + awayGA) / 2 * 1.1;
+  const awayAttack = (awayGF + homeGA) / 2;
+
+  const totalAttack = homeAttack + awayAttack || 1;
+  let pHome = (homeAttack / totalAttack) * 0.6 + homeWinPct * 0.4;
+  let pAway = (awayAttack / totalAttack) * 0.6 + awayWinPct * 0.4;
+  pHome = Math.max(0.05, Math.min(0.85, pHome));
+  pAway = Math.max(0.05, Math.min(0.85, pAway));
+  let pDraw = Math.max(0.1, 1 - pHome - pAway);
+  const sum1 = pHome + pDraw + pAway;
+  pHome /= sum1; pDraw /= sum1; pAway /= sum1;
+
+  const result1x2 = [
+    { label: `Victoire ${homeName}`, pct: pHome },
+    { label: "Match nul", pct: pDraw },
+    { label: `Victoire ${awayName}`, pct: pAway },
+  ].sort((a, b) => b.pct - a.pct)[0];
+
+  predictions.push({ type: "Résultat (1N2)", pick: result1x2.label, confidence: result1x2.pct });
+
+  const expectedGoals = homeAttack + awayAttack;
+  const pOver25 = Math.max(0.1, Math.min(0.9, (expectedGoals - 1.5) / 3 + 0.5));
+  const overUnder = pOver25 >= 0.5
+    ? { label: "Plus de 2.5 buts", pct: pOver25 }
+    : { label: "Moins de 2.5 buts", pct: 1 - pOver25 };
+  predictions.push({ type: "Total de buts", pick: overUnder.label, confidence: overUnder.pct });
+
+  const pHomeScores = Math.max(0.15, Math.min(0.9, homeAttack / 1.4));
+  const pAwayScores = Math.max(0.15, Math.min(0.9, awayAttack / 1.4));
+  const pBTTS = pHomeScores * pAwayScores;
+  const bttsLabel = pBTTS >= 0.5 ? "Les deux équipes marquent : Oui" : "Les deux équipes marquent : Non";
+  predictions.push({ type: "BTTS", pick: bttsLabel, confidence: pBTTS >= 0.5 ? pBTTS : 1 - pBTTS });
+
+  const pDoubleHome = pHome + pDraw;
+  const pDoubleAway = pAway + pDraw;
+  const dc = pDoubleHome >= pDoubleAway
+    ? { label: `Double chance : ${homeName} ou nul`, pct: pDoubleHome }
+    : { label: `Double chance : ${awayName} ou nul`, pct: pDoubleAway };
+  predictions.push({ type: "Double chance", pick: dc.label, confidence: Math.min(0.95, dc.pct) });
+
+  return predictions.sort((a, b) => b.confidence - a.confidence);
+}
+
+function confidenceBarHTML(value) {
+  const pct = Math.round(value * 100);
+  const color = pct >= 65 ? "#2d6a4f" : pct >= 50 ? "#b08900" : "#9b2c2c";
+  return `
+    <div class="bar-row">
+      <div class="bar-bg"><div class="bar-fill" style="width:${pct}%; background:${color}"></div></div>
+      <span class="bar-pct" style="color:${color}">${pct}%</span>
+    </div>`;
+}
+
+async function showPredictions(fixture, container, btn) {
+  if (container.dataset.loaded === "true") {
+    container.style.display = container.style.display === "none" ? "block" : "none";
+    btn.textContent = container.style.display === "none" ? "👁️ Voir les pronostics" : "🙈 Masquer les pronostics";
+    return;
+  }
+  btn.textContent = "🔄 Calcul en cours...";
+  btn.disabled = true;
+  try {
+    const season = fixture.league.season;
+    const home = fixture.teams.home;
+    const away = fixture.teams.away;
+    const [homeStatsRes, awayStatsRes] = await Promise.all([
+      apiGet(`/teams/statistics?team=${home.id}&league=${fixture.league.id}&season=${season}`),
+      apiGet(`/teams/statistics?team=${away.id}&league=${fixture.league.id}&season=${season}`),
+    ]);
+    const preds = computePredictions(homeStatsRes, awayStatsRes, home.name, away.name);
+    container.innerHTML = preds.map(p => `
+      <div class="pred-item">
+        <div class="pred-type">${p.type}</div>
+        <div class="pred-pick">${p.pick}</div>
+        ${confidenceBarHTML(p.confidence)}
+      </div>
+    `).join("");
+    container.dataset.loaded = "true";
+    container.style.display = "block";
+    btn.textContent = "🙈 Masquer les pronostics";
+  } catch (e) {
+    container.innerHTML = `<div style="color:#9b2c2c;font-size:13px;">⚠️ Stats indisponibles pour ce match (ligue peu couverte ou quota atteint).</div>`;
+    container.style.display = "block";
+    btn.textContent = "👁️ Voir les pronostics";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderMatch(fixture) {
+  const home = fixture.teams.home;
+  const away = fixture.teams.away;
+  const league = fixture.league;
+  const kickoff = new Date(fixture.fixture.date);
+  const timeStr = kickoff.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <div class="card-top">
+      <span class="league">${league.name}</span>
+      <span class="time">${timeStr}</span>
+    </div>
+    <div class="teams">
+      <img src="${home.logo}" alt="" />
+      <span class="team-name">${home.name}</span>
+      <span class="vs">vs</span>
+      <span class="team-name">${away.name}</span>
+      <img src="${away.logo}" alt="" />
+    </div>
+    <button class="pred-btn">👁️ Voir les pronostics</button>
+    <div class="predictions" style="display:none"></div>
+  `;
+  const btn = card.querySelector(".pred-btn");
+  const predContainer = card.querySelector(".predictions");
+  btn.addEventListener("click", () => showPredictions(fixture, predContainer, btn));
+  return card;
+}
+
+async function loadFixtures() {
+  const statusEl = document.getElementById("status");
+  const errorBox = document.getElementById("errorBox");
+  const matchList = document.getElementById("matchList");
+  const refreshBtn = document.getElementById("refreshBtn");
+  const footerNote = document.getElementById("footerNote");
+
+  statusEl.style.display = "block";
+  statusEl.innerHTML = '<span class="spin">🔄</span> Chargement des matchs du jour...';
+  errorBox.innerHTML = "";
+  matchList.innerHTML = "";
+
+  try {
+    const data = await apiGet(`/fixtures?date=${todayISO()}`);
+    const sorted = [...data].sort((a, b) => new Date(a.fixture.date) - new Date(b.fixture.date));
+    statusEl.style.display = "none";
+    refreshBtn.style.display = "flex";
+
+    if (sorted.length === 0) {
+      matchList.innerHTML = '<p style="text-align:center;color:#8a8478;margin-top:40px;">Aucun match trouvé pour aujourd\'hui.</p>';
+    } else {
+      sorted.forEach(f => matchList.appendChild(renderMatch(f)));
+      footerNote.innerHTML = "Pronostics calculés à partir des statistiques de saison.<br>Outil d'aide à la réflexion, pas une garantie de résultat.";
+      footerNote.className = "footer-note";
+    }
+  } catch (e) {
+    statusEl.style.display = "none";
+    errorBox.innerHTML = '<div class="error-box">⚠️ Impossible de récupérer les matchs. Réessaie dans un instant.</div>';
+    refreshBtn.style.display = "flex";
+  }
+}
+
+document.getElementById("dateLabel").textContent = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+document.getElementById("refreshBtn").addEventListener("click", loadFixtures);
+loadFixtures();
+</script>
+</body>
+</html>
