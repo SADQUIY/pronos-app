@@ -52,6 +52,36 @@
   .footer-note { font-size: 11px; color: #b0aa9c; text-align: center; margin-top: 20px; line-height: 1.5; }
   .spin { animation: spin 1s linear infinite; display: inline-block; }
   @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .category {
+    margin-bottom: 22px;
+  }
+  .category-header {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 14px; font-weight: 800; color: #2b2a27;
+    margin-bottom: 10px; padding-bottom: 6px;
+    border-bottom: 2px solid #2b2a27;
+  }
+  .category-count {
+    font-size: 11px; font-weight: 600; color: #8a8478;
+    background: #e8e4d9; border-radius: 10px; padding: 2px 8px;
+  }
+  .league-row {
+    display: flex; align-items: center; gap: 10px;
+    background: #fffdf8; border: 1px solid #e8e4d9; border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 8px; cursor: pointer;
+  }
+  .league-flag { font-size: 20px; width: 24px; text-align: center; flex-shrink: 0; }
+  .league-name { flex: 1; font-size: 14px; font-weight: 600; color: #2b2a27; }
+  .league-badge {
+    font-size: 12px; font-weight: 700; color: #fffdf8;
+    background: #2b2a27; border-radius: 50%;
+    width: 22px; height: 22px; display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .league-chevron { font-size: 12px; color: #b0aa9c; transition: transform 0.15s; flex-shrink: 0; }
+  .league-chevron.open { transform: rotate(180deg); }
+  .league-matches { display: none; padding: 4px 0 4px 4px; }
+  .league-matches.open { display: block; }
 </style>
 </head>
 <body>
@@ -88,6 +118,72 @@ async function apiGet(path) {
 
 function safe(v, fallback = 0) {
   return (typeof v === "number" && !isNaN(v)) ? v : fallback;
+}
+
+const CATEGORY_ORDER = ["maroc", "international", "europe", "autres"];
+const CATEGORY_LABELS = {
+  maroc: "🇲🇦 Maroc",
+  international: "🌍 Coupe du monde / International",
+  europe: "🏆 Championnats européens",
+  autres: "⚽ Autres compétitions",
+};
+
+const EUROPEAN_COUNTRIES = [
+  "England", "Spain", "Italy", "Germany", "France", "Portugal",
+  "Netherlands", "Belgium", "Scotland", "Turkey", "Greece", "Switzerland",
+  "Austria", "Russia", "Ukraine", "Poland", "Czech-Republic", "Denmark",
+  "Sweden", "Norway", "Croatia", "Serbia", "Romania",
+];
+
+const INTERNATIONAL_KEYWORDS = [
+  "world cup", "world-cup", "uefa", "afcon", "africa cup", "nations league",
+  "champions league", "europa league", "conference league", "copa america",
+  "concacaf", "confederations", "qualification", "qualifiers", "friendlies",
+  "international",
+];
+
+function categorizeFixture(fixture) {
+  const league = fixture.league;
+  const country = (league.country || "").toLowerCase();
+  const leagueName = (league.name || "").toLowerCase();
+
+  if (country === "morocco") return "maroc";
+
+  const isInternational =
+    country === "world" ||
+    INTERNATIONAL_KEYWORDS.some(kw => leagueName.includes(kw));
+  if (isInternational) return "international";
+
+  const isEuropean = EUROPEAN_COUNTRIES.some(c => c.toLowerCase() === country);
+  if (isEuropean) return "europe";
+
+  return "autres";
+}
+
+const COUNTRY_TO_ISO = {
+  "morocco": "MA", "world": "🌍", "england": "GB", "spain": "ES", "italy": "IT",
+  "germany": "DE", "france": "FR", "portugal": "PT", "netherlands": "NL",
+  "belgium": "BE", "scotland": "GB", "turkey": "TR", "greece": "GR",
+  "switzerland": "CH", "austria": "AT", "russia": "RU", "ukraine": "UA",
+  "poland": "PL", "czech-republic": "CZ", "denmark": "DK", "sweden": "SE",
+  "norway": "NO", "croatia": "HR", "serbia": "RS", "romania": "RO",
+  "brazil": "BR", "argentina": "AR", "usa": "US", "mexico": "MX",
+  "china": "CN", "japan": "JP", "south-korea": "KR", "australia": "AU",
+  "egypt": "EG", "algeria": "DZ", "tunisia": "TN", "saudi-arabia": "SA",
+  "qatar": "QA", "uae": "AE",
+};
+
+function isoToFlagEmoji(iso) {
+  if (!iso || iso.length !== 2) return "🏳️";
+  const codePoints = iso.toUpperCase().split("").map(c => 127397 + c.charCodeAt(0));
+  return String.fromCodePoint(...codePoints);
+}
+
+function countryFlag(countryName) {
+  const key = (countryName || "").toLowerCase();
+  if (key === "world") return "🌍";
+  const iso = COUNTRY_TO_ISO[key];
+  return iso ? isoToFlagEmoji(iso) : "🏳️";
 }
 
 function computePredictions(homeStats, awayStats, homeName, awayName) {
@@ -220,6 +316,32 @@ function renderMatch(fixture) {
   return card;
 }
 
+function renderLeagueGroup(leagueName, countryName, fixtures) {
+  const row = document.createElement("div");
+
+  const header = document.createElement("div");
+  header.className = "league-row";
+  header.innerHTML = `
+    <span class="league-flag">${countryFlag(countryName)}</span>
+    <span class="league-name">${leagueName}</span>
+    <span class="league-badge">${fixtures.length}</span>
+    <span class="league-chevron">▼</span>
+  `;
+
+  const matchesContainer = document.createElement("div");
+  matchesContainer.className = "league-matches";
+  fixtures.forEach(f => matchesContainer.appendChild(renderMatch(f)));
+
+  header.addEventListener("click", () => {
+    const isOpen = matchesContainer.classList.toggle("open");
+    header.querySelector(".league-chevron").classList.toggle("open", isOpen);
+  });
+
+  row.appendChild(header);
+  row.appendChild(matchesContainer);
+  return row;
+}
+
 async function loadFixtures() {
   const statusEl = document.getElementById("status");
   const errorBox = document.getElementById("errorBox");
@@ -241,7 +363,40 @@ async function loadFixtures() {
     if (sorted.length === 0) {
       matchList.innerHTML = '<p style="text-align:center;color:#8a8478;margin-top:40px;">Aucun match trouvé pour aujourd\'hui.</p>';
     } else {
-      sorted.forEach(f => matchList.appendChild(renderMatch(f)));
+      const grouped = {};
+      sorted.forEach(f => {
+        const cat = categorizeFixture(f);
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push(f);
+      });
+
+      CATEGORY_ORDER.forEach(cat => {
+        if (!grouped[cat] || grouped[cat].length === 0) return;
+        const section = document.createElement("div");
+        section.className = "category";
+        section.innerHTML = `
+          <div class="category-header">
+            <span>${CATEGORY_LABELS[cat]}</span>
+            <span class="category-count">${grouped[cat].length}</span>
+          </div>
+        `;
+
+        const byLeague = {};
+        grouped[cat].forEach(f => {
+          const key = `${f.league.name}__${f.league.country}`;
+          if (!byLeague[key]) byLeague[key] = { name: f.league.name, country: f.league.country, fixtures: [] };
+          byLeague[key].fixtures.push(f);
+        });
+
+        Object.values(byLeague)
+          .sort((a, b) => b.fixtures.length - a.fixtures.length)
+          .forEach(group => {
+            section.appendChild(renderLeagueGroup(group.name, group.country, group.fixtures));
+          });
+
+        matchList.appendChild(section);
+      });
+
       footerNote.innerHTML = "Pronostics calculés à partir des statistiques de saison.<br>Outil d'aide à la réflexion, pas une garantie de résultat.";
       footerNote.className = "footer-note";
     }
