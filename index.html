@@ -255,17 +255,16 @@ function isNationalTeamMatch(fixture) {
 }
 
 async function computeNationalPredictions(home, away) {
-  const today = new Date();
-  const oneYearAgo = new Date(today);
-  oneYearAgo.setFullYear(today.getFullYear() - 1);
-  const fromDate = oneYearAgo.toISOString().slice(0, 10);
-  const toDate = today.toISOString().slice(0, 10);
-
-  const [h2hRes, homeLastRaw, awayLastRaw] = await Promise.all([
-    apiGet(`/fixtures/headtohead?h2h=${home.id}-${away.id}&from=${fromDate}&to=${toDate}`),
-    apiGet(`/fixtures?team=${home.id}&from=${fromDate}&to=${toDate}`),
-    apiGet(`/fixtures?team=${away.id}&from=${fromDate}&to=${toDate}`),
+  const [h2hRes, homeCurr, homePrev, awayCurr, awayPrev] = await Promise.all([
+    apiGet(`/fixtures/headtohead?h2h=${home.id}-${away.id}`),
+    apiGet(`/fixtures?team=${home.id}&season=2024`),
+    apiGet(`/fixtures?team=${home.id}&season=2023`),
+    apiGet(`/fixtures?team=${away.id}&season=2024`),
+    apiGet(`/fixtures?team=${away.id}&season=2023`),
   ]);
+
+  const homeLastRaw = [...(homeCurr || []), ...(homePrev || [])];
+  const awayLastRaw = [...(awayCurr || []), ...(awayPrev || [])];
 
   function recentFinished(matches, limit) {
     return [...(matches || [])]
