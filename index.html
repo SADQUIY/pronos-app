@@ -204,6 +204,28 @@ const COUNTRY_TO_ISO = {
   "egypt":"EG","algeria":"DZ","tunisia":"TN","saudi-arabia":"SA",
   "qatar":"QA","uae":"AE","nigeria":"NG","senegal":"SN",
   "cameroon":"CM","ghana":"GH","ivory coast":"CI","mali":"ML",
+  "kyrgyzstan":"KG","kazakhstan":"KZ","belarus":"BY","paraguay":"PY",
+  "bolivia":"BO","colombia":"CO","chile":"CL","peru":"PE","uruguay":"UY",
+  "venezuela":"VE","ecuador":"EC","costa rica":"CR","guatemala":"GT",
+  "honduras":"HN","el salvador":"SV","panama":"PA","cuba":"CU",
+  "jamaica":"JM","haiti":"HT","kenya":"KE","ethiopia":"ET",
+  "tanzania":"TZ","uganda":"UG","zimbabwe":"ZW","zambia":"ZM",
+  "south africa":"ZA","angola":"AO","mozambique":"MZ","madagascar":"MG",
+  "iran":"IR","iraq":"IQ","israel":"IL","jordan":"JO","syria":"SY",
+  "lebanon":"LB","kuwait":"KW","bahrain":"BH","oman":"OM","yemen":"YE",
+  "india":"IN","pakistan":"PK","bangladesh":"BD","sri lanka":"LK",
+  "thailand":"TH","vietnam":"VN","indonesia":"ID","malaysia":"MY",
+  "philippines":"PH","myanmar":"MM","cambodia":"KH","laos":"LA",
+  "new zealand":"NZ","fiji":"FJ","papua new guinea":"PG",
+  "finland":"FI","bulgaria":"BG","slovakia":"SK","slovenia":"SI",
+  "hungary":"HU","moldova":"MD","georgia":"GE","armenia":"AM",
+  "azerbaijan":"AZ","albania":"AL","kosovo":"XK","north macedonia":"MK",
+  "bosnia":"BA","montenegro":"ME","lithuania":"LT","latvia":"LV",
+  "estonia":"EE","luxembourg":"LU","cyprus":"CY","malta":"MT",
+  "iceland":"IS","ireland":"IE","wales":"GB","northern ireland":"GB",
+  "somalia":"SO","libya":"LY","sudan":"SD","chad":"TD","niger":"NE",
+  "burkina faso":"BF","guinea":"GN","sierra leone":"SL","liberia":"LR",
+  "togo":"TG","benin":"BJ","gabon":"GA","congo":"CG","rwanda":"RW",
 };
 
 function isoToFlag(iso) {
@@ -216,6 +238,14 @@ function countryFlag(country) {
   if (key === "world") return "🌍";
   const iso = COUNTRY_TO_ISO[key];
   return iso ? isoToFlag(iso) : "🏳️";
+}
+
+function formatLeagueName(leagueName, countryName) {
+  const country = (countryName || "").trim();
+  const league = (leagueName || "").trim();
+  if (!country || country.toLowerCase() === "world") return league;
+  if (league.toLowerCase().startsWith(country.toLowerCase())) return league;
+  return `${country}. ${league}`;
 }
 
 function safe(v, fallback = 0) {
@@ -413,9 +443,10 @@ function renderLeagueGroup(leagueName, countryName, fixtures, hasLive) {
   wrapper.className="league-group";
   const header=document.createElement("div");
   header.className="league-header"+(hasLive?" live-header":"");
+  const displayName=formatLeagueName(leagueName, countryName);
   header.innerHTML=`
     <span class="league-flag">${countryFlag(countryName)}</span>
-    <span class="league-title">${leagueName}</span>
+    <span class="league-title">${displayName}</span>
     ${hasLive?`<span class="league-live-badge">LIVE</span>`:""}
     <span class="league-count${hasLive?" live-count":""}">${fixtures.length}</span>
     <span class="league-chevron">▼</span>
