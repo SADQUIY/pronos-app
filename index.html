@@ -169,19 +169,10 @@ const LEAGUE_PRIORITY = [
   "champions league","uefa champions league",
   "europa league","uefa europa league",
   "conference league","uefa europa conference league",
-  "premier league",
-  "la liga","primera division",
-  "serie a",
-  "bundesliga",
-  "ligue 1",
-  "eredivisie",
-  "primeira liga",
-  "super lig",
-  "botola","botola pro",
-  "nations league",
-  "afcon","africa cup",
-  "copa america",
-  "concacaf",
+  "premier league","la liga","primera division",
+  "serie a","bundesliga","ligue 1","eredivisie",
+  "primeira liga","super lig","botola","botola pro",
+  "nations league","afcon","africa cup","copa america","concacaf",
 ];
 
 function leaguePriority(leagueName) {
@@ -216,16 +207,13 @@ const COUNTRY_TO_ISO = {
   "india":"IN","pakistan":"PK","bangladesh":"BD","sri lanka":"LK",
   "thailand":"TH","vietnam":"VN","indonesia":"ID","malaysia":"MY",
   "philippines":"PH","myanmar":"MM","cambodia":"KH","laos":"LA",
-  "new zealand":"NZ","fiji":"FJ","papua new guinea":"PG",
-  "finland":"FI","bulgaria":"BG","slovakia":"SK","slovenia":"SI",
-  "hungary":"HU","moldova":"MD","georgia":"GE","armenia":"AM",
-  "azerbaijan":"AZ","albania":"AL","kosovo":"XK","north macedonia":"MK",
-  "bosnia":"BA","montenegro":"ME","lithuania":"LT","latvia":"LV",
-  "estonia":"EE","luxembourg":"LU","cyprus":"CY","malta":"MT",
-  "iceland":"IS","ireland":"IE","wales":"GB","northern ireland":"GB",
-  "somalia":"SO","libya":"LY","sudan":"SD","chad":"TD","niger":"NE",
-  "burkina faso":"BF","guinea":"GN","sierra leone":"SL","liberia":"LR",
-  "togo":"TG","benin":"BJ","gabon":"GA","congo":"CG","rwanda":"RW",
+  "new zealand":"NZ","finland":"FI","bulgaria":"BG","slovakia":"SK",
+  "slovenia":"SI","hungary":"HU","moldova":"MD","georgia":"GE",
+  "armenia":"AM","azerbaijan":"AZ","albania":"AL","lithuania":"LT",
+  "latvia":"LV","estonia":"EE","luxembourg":"LU","cyprus":"CY",
+  "malta":"MT","iceland":"IS","ireland":"IE","somalia":"SO",
+  "libya":"LY","sudan":"SD","togo":"TG","benin":"BJ","gabon":"GA",
+  "congo":"CG","rwanda":"RW","cameroon":"CM",
 };
 
 function isoToFlag(iso) {
@@ -508,14 +496,16 @@ function switchTab(tab) {
   document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)).length})`;
 }
 
-async function loadFixtures() {
+async function loadFixtures(silent = false) {
   const statusEl=document.getElementById("status");
   const errorBox=document.getElementById("errorBox");
   const refreshBtn=document.getElementById("refreshBtn");
-  statusEl.style.display="block";
-  statusEl.innerHTML='<span class="spin">🔄</span> Chargement...';
-  errorBox.innerHTML="";
-  document.getElementById("matchList").innerHTML="";
+  if (!silent) {
+    statusEl.style.display="block";
+    statusEl.innerHTML='<span class="spin">🔄</span> Chargement...';
+    errorBox.innerHTML="";
+    document.getElementById("matchList").innerHTML="";
+  }
   try {
     const data=await apiGet(`/fixtures?date=${todayISO()}`);
     allFixtures=[...data].sort((a,b)=>new Date(a.fixture.date)-new Date(b.fixture.date));
@@ -523,14 +513,19 @@ async function loadFixtures() {
     refreshBtn.style.display="flex";
     switchTab(currentTab);
   } catch(e) {
-    statusEl.style.display="none";
-    errorBox.innerHTML=`<div class="error-box">⚠️ Impossible de récupérer les matchs. Réessaie dans un instant.</div>`;
-    refreshBtn.style.display="flex";
+    if (!silent) {
+      statusEl.style.display="none";
+      errorBox.innerHTML=`<div class="error-box">⚠️ Impossible de récupérer les matchs. Réessaie dans un instant.</div>`;
+      refreshBtn.style.display="flex";
+    }
   }
 }
 
 document.getElementById("dateLabel").textContent=new Date().toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"});
 loadFixtures();
+
+// Rafraîchissement automatique toutes les 2 minutes (silencieux)
+setInterval(() => { loadFixtures(true); }, 2 * 60 * 1000);
 </script>
 </body>
 </html>
