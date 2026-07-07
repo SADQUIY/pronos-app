@@ -134,8 +134,7 @@ function computePredictions(homeStats,awayStats,homeForm,awayForm,homeName,awayN
   const awayGF=safe(awayStats?.goals?.for?.average?.total),awayGA=safe(awayStats?.goals?.against?.average?.total);
   const homeWinPct=safe(homeStats?.fixtures?.wins?.total)/Math.max(1,safe(homeStats?.fixtures?.played?.total,1));
   const awayWinPct=safe(awayStats?.fixtures?.wins?.total)/Math.max(1,safe(awayStats?.fixtures?.played?.total,1));
-  const haS=(homeGF+awayGA)/2*1.1,aaS=(awayGF+homeGA)/2;
-  const haF=(homeForm.avgGF+awayForm.avgGA)/2*1.1,aaF=(awayForm.avgGF+homeForm.avgGA)/2;
+  const haS=(homeGF+awayGA)/2*1.1,aaS=(awayGF+homeGA)/2,haF=(homeForm.avgGF+awayForm.avgGA)/2*1.1,aaF=(awayForm.avgGF+homeForm.avgGA)/2;
   const ha=haS*0.5+haF*0.5,aa=aaS*0.5+aaF*0.5,ta=ha+aa||1;
   let pH=(ha/ta)*0.6+(homeWinPct*0.5+homeForm.winRate*0.5)*0.4;
   let pA=(aa/ta)*0.6+(awayWinPct*0.5+awayForm.winRate*0.5)*0.4;
@@ -167,8 +166,7 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
   let pWTNH=0,pWTNA=0,pScoreDraw=0,pNilNil=0,pHTHome=0,pHTDraw=0,pHTAway=0;
   let pWinBothHome=0,pWinBothAway=0,pDrawBoth=0,pBTTSEachHalf=0;
   let pLeadNoLoseHome=0,pLeadNoLoseAway=0,pNeither1=0,pNeither2=0;
-  let pHomeOver05=0,pHomeOver15=0,pAwayOver05=0,pAwayOver15=0;
-  let pHomeWinExact1orDraw=0,pAwayWinExact1orDraw=0;
+  let pHomeOver05=0,pHomeOver15=0,pAwayOver05=0,pAwayOver15=0,pHomeWinExact1orDraw=0,pAwayWinExact1orDraw=0;
   const htftMap={},intervalGoals={15:0,30:0,45:0,60:0,75:0};
   for(let i=0;i<=MAX;i++)for(let j=0;j<=MAX;j++){const p=M[i][j];if(i>j&&j===0)pWTNH+=p;if(j>i&&i===0)pWTNA+=p;if(i===j&&i>0)pScoreDraw+=p;if(i===0&&j===0)pNilNil+=p;if(i>0)pHomeOver05+=p;if(i>1)pHomeOver15+=p;if(j>0)pAwayOver05+=p;if(j>1)pAwayOver15+=p;if(i>j&&Math.abs(i-j)===1)pHomeWinExact1orDraw+=p;if(i===j)pHomeWinExact1orDraw+=p;if(j>i&&Math.abs(j-i)===1)pAwayWinExact1orDraw+=p;if(i===j)pAwayWinExact1orDraw+=p;}
   for(let i=0;i<=MAX;i++)for(let j=0;j<=MAX;j++){const ph=HT[i][j];if(!ph)continue;const htR=i>j?'1':i===j?'X':'2';if(i>j)pHTHome+=ph;else if(i===j)pHTDraw+=ph;else pHTAway+=ph;for(let k=0;k<=MAX;k++)for(let l=0;l<=MAX;l++){const ps=SH[k][l];if(!ps)continue;const w=ph*ps,fh=i+k,fa=j+l;const ftR=fh>fa?'1':fh===fa?'X':'2';htftMap[htR+'/'+ftR]=(htftMap[htR+'/'+ftR]||0)+w;if(i>j&&k>l)pWinBothHome+=w;if(i<j&&k<l)pWinBothAway+=w;if(i===j&&k===l)pDrawBoth+=w;if(i>0&&j>0&&k>0&&l>0)pBTTSEachHalf+=w;if(i===0&&j===0)pNeither1+=ph;if(k===0&&l===0)pNeither2+=ps;if((i>j||(i===j&&htR==='X'))&&fh>=fa)pLeadNoLoseHome+=w;if((i<j||(i===j&&htR==='X'))&&fa>=fh)pLeadNoLoseAway+=w;}}
@@ -184,8 +182,21 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
   push(`${awayName} gagne sans encaisser`,pWTNA);
   push('Match nul avec buts (Score Draw)',pScoreDraw);
   push('0-0 (Aucun but)',pNilNil);
-  const htftCombos=[{label:`${homeName}/${homeName}`,p:htftMap['1/1']||0},{label:`${homeName}/Nul`,p:htftMap['1/X']||0},{label:`Nul/Nul`,p:htftMap['X/X']||0},{label:`Nul/${homeName}`,p:htftMap['X/1']||0},{label:`Nul/${awayName}`,p:htftMap['X/2']||0},{label:`${awayName}/${awayName}`,p:htftMap['2/2']||0},{label:`${awayName}/Nul`,p:htftMap['2/X']||0},{label:`${awayName}/${homeName}`,p:htftMap['2/1']||0},{label:`${homeName}/${awayName}`,p:htftMap['1/2']||0}].sort((a,b)=>b.p-a.p);
-  markets.push({type:'Mi-temps / Final (HT-FT)',pick:htftCombos[0].label,confidence:clamp(htftCombos[0].p*3)});
+
+  // HT-FT : en 2ème MT, utiliser le vrai résultat HT + prédire seulement le FT
+  const is2HForHtft=elapsedMin!==null&&elapsedMin>45&&currentHomeGoals!==null&&currentAwayGoals!==null;
+  let htftPick,htftConf;
+  if(is2HForHtft){
+    const knownHt=currentHomeGoals>currentAwayGoals?'1':currentHomeGoals<currentAwayGoals?'2':'X';
+    const htLabel=knownHt==='1'?homeName:knownHt==='2'?awayName:'Nul';
+    const ftOptions=[{label:`${htLabel}/${homeName}`,conf:pH},{label:`${htLabel}/Nul`,conf:pD},{label:`${htLabel}/${awayName}`,conf:pA}].sort((a,b)=>b.conf-a.conf);
+    htftPick=ftOptions[0].label;htftConf=clamp(ftOptions[0].conf);
+  } else {
+    const htftCombos=[{label:`${homeName}/${homeName}`,p:htftMap['1/1']||0},{label:`${homeName}/Nul`,p:htftMap['1/X']||0},{label:`Nul/Nul`,p:htftMap['X/X']||0},{label:`Nul/${homeName}`,p:htftMap['X/1']||0},{label:`Nul/${awayName}`,p:htftMap['X/2']||0},{label:`${awayName}/${awayName}`,p:htftMap['2/2']||0},{label:`${awayName}/Nul`,p:htftMap['2/X']||0},{label:`${awayName}/${homeName}`,p:htftMap['2/1']||0},{label:`${homeName}/${awayName}`,p:htftMap['1/2']||0}].sort((a,b)=>b.p-a.p);
+    htftPick=htftCombos[0].label;htftConf=clamp(htftCombos[0].p*3);
+  }
+  markets.push({type:'Mi-temps / Final (HT-FT)',pick:htftPick,confidence:htftConf});
+
   push(`${homeName} gagne les deux mi-temps`,pWinBothHome);
   push(`${awayName} gagne les deux mi-temps`,pWinBothAway);
   push('Nul dans les deux mi-temps',pDrawBoth);
@@ -208,7 +219,7 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
   push(`${homeName} se qualifie`,pHomeQualifies);push(`${awayName} se qualifie`,pAwayQualifies);
   push(`${homeName} se qualifie en temps réglementaire`,pH);push(`${awayName} se qualifie en temps réglementaire`,pA);
 
-  // === CORRECTION COMPLÈTE POUR MATCHS EN COURS ===
+  // === CORRECTION POUR MATCHS EN COURS ===
   if(currentHomeGoals!==null&&currentAwayGoals!==null){
     const hG=currentHomeGoals,aG=currentAwayGoals,tG=hG+aG;
     const isHT=elapsedMin!==null&&elapsedMin===45;
@@ -223,12 +234,12 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
       if((m.type.includes('Any Team')||m.type.includes('Une équipe gagne sans'))&&hG>0&&aG>0){m.pick='Non';m.confidence=0.99;}
       if(m.type.includes('chaque mi-temps')&&is2H&&(hG===0||aG===0)){m.pick='Non';m.confidence=0.99;}
       if(m.type.includes('Score Draw')){if(hG!==aG){m.pick='Non';m.confidence=0.75;}else if(hG===aG&&hG>0&&is2H&&elapsedMin>80){m.pick='Oui';m.confidence=0.80;}else if(hG===0&&aG===0&&is2H&&elapsedMin>80){m.pick='Non';m.confidence=0.80;}}
-      if(m.type.includes('HT-FT')){if(is1H){m.confidence=0.01;}else if(htResult!==null){const htLabel=htResult==='1'?homeName:htResult==='2'?awayName:'Nul';if(!m.pick.startsWith(htLabel)){m.pick='Non';m.confidence=0.99;}}}
+      if(m.type.includes('HT-FT')&&is1H){m.confidence=0.01;}
       if(m.type.includes(`${homeName} gagne les deux mi-temps`)&&is2H&&htResult!=='1'){m.pick='Non';m.confidence=0.99;}
       if(m.type.includes(`${awayName} gagne les deux mi-temps`)&&is2H&&htResult!=='2'){m.pick='Non';m.confidence=0.99;}
       if(m.type.includes('Nul dans les deux mi-temps')){if(is2H&&htResult!=='X'){m.pick='Non';m.confidence=0.99;}else if(is2H&&htResult==='X'&&elapsedMin>80&&hG===aG){m.pick='Oui';m.confidence=0.75;}}
       if(m.type.includes('1er but 1ère mi-temps')&&is2H){if(hG>0&&aG===0){m.pick=`${homeName} marque en 1er`;m.confidence=0.99;}else if(aG>0&&hG===0){m.pick=`${awayName} marque en 1er`;m.confidence=0.99;}else if(tG>0){m.pick='But marqué en 1ère MT';m.confidence=0.99;}else{m.pick='Aucun but en 1ère MT';m.confidence=0.99;}}
-      [15,30,45,60,75].forEach(min=>{if(m.type.includes(`avant la ${min}e`)&&elapsedMin!==null&&elapsedMin>min){if(tG===0){m.pick='Non';m.confidence=0.99;}}});
+      [15,30,45,60,75].forEach(min=>{if(m.type.includes(`avant la ${min}e`)&&elapsedMin!==null&&elapsedMin>min&&tG===0){m.pick='Non';m.confidence=0.99;}});
       if(m.type.includes('Carton rouge')&&m.confidence>0.75){m.confidence=0.75;}
       if(m.type.includes('Ni penalty ni carton rouge')&&m.confidence>0.75){m.confidence=0.75;}
       if(m.type.includes('Penalty sifflé')&&m.confidence>0.70){m.confidence=0.70;}
@@ -318,10 +329,7 @@ async function showPredictions(fixture,container,btn) {
         const CONCLUDED=['gagne sans encaisser','0-0','aucun but','1er but 1ère mi-temps','but de 1\' à','but avant la 15','but avant la 30'];
         function isConcluded(m){if(m.confidence<0.97)return false;return CONCLUDED.some(kw=>m.type.toLowerCase().includes(kw.toLowerCase()));}
         const topLive=extLive.filter(p=>p.confidence>=0.70&&p.confidence>0.01&&!isConcluded(p)&&!baseLiveTypes.some(t=>p.type.includes(t.substring(0,8)))).slice(0,12);
-        if(topLive.length>0){
-          html+=`<div class="markets-divider">📊 MARCHÉS ENCORE JOUABLES (≥70%)</div>`;
-          html+=topLive.map(p=>`<div class="pred-item"><div class="pred-type">${p.type}</div><div class="pred-pick">${p.pick}</div>${confidenceBarHTML(p.confidence)}</div>`).join("");
-        }
+        if(topLive.length>0){html+=`<div class="markets-divider">📊 MARCHÉS ENCORE JOUABLES (≥70%)</div>`;html+=topLive.map(p=>`<div class="pred-item"><div class="pred-type">${p.type}</div><div class="pred-pick">${p.pick}</div>${confidenceBarHTML(p.confidence)}</div>`).join("");}
       } catch(e){}
     } else {
       let result,homeForm,awayForm,pH,pD,pA,pBTTS,pOver25;
