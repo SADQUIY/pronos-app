@@ -64,7 +64,6 @@
   .pre-header-note { font-size: 11px; color: #8a9ab8; margin-bottom: 8px; }
   .stats-box { font-size: 11px; color: #4a6090; background: #f0f4ff; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.6; }
   .form-box { font-size: 11px; color: #4a6090; background: #f0f8f0; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.6; }
-  .markets-divider { font-size: 11px; font-weight: 700; color: #1a3a6b; margin: 12px 0 6px; padding-top: 10px; border-top: 2px solid #e8ecf4; }
   .footer-note { font-size: 11px; color: #b0b8c8; text-align: center; margin-top: 20px; line-height: 1.5; padding: 0 12px; }
   .empty-tab { text-align: center; margin-top: 60px; color: #8a9ab8; font-size: 14px; }
   .spin { animation: spin 1s linear infinite; display: inline-block; }
@@ -122,8 +121,8 @@ function isNationalTeamMatch(f) { const c=(f.league.country||"").toLowerCase(),n
 
 function calcWeightedForm(matches, teamId) {
   if (!matches||matches.length===0) return {winRate:0.33,drawRate:0.25,avgGF:1.2,avgGA:1.2,bttsRate:0.5,over25Rate:0.5,matchCount:0};
-  const finished = [...matches].filter(m=>["FT","AET","PEN"].includes(m.fixture.status.short)).sort((a,b)=>new Date(b.fixture.date)-new Date(a.fixture.date));
-  if (finished.length===0) return {winRate:0.33,drawRate:0.25,avgGF:1.2,avgGA:1.2,bttsRate:0.5,over25Rate:0.5,matchCount:0};
+  const finished=[...matches].filter(m=>["FT","AET","PEN"].includes(m.fixture.status.short)).sort((a,b)=>new Date(b.fixture.date)-new Date(a.fixture.date));
+  if(finished.length===0) return {winRate:0.33,drawRate:0.25,avgGF:1.2,avgGA:1.2,bttsRate:0.5,over25Rate:0.5,matchCount:0};
   let tw=0,wins=0,draws=0,gf=0,ga=0,btts=0,over25=0;
   finished.forEach((m,idx)=>{ const w=Math.pow(0.85,idx); tw+=w; const isH=m.teams.home.id===teamId; const scored=isH?(m.goals.home??0):(m.goals.away??0); const conceded=isH?(m.goals.away??0):(m.goals.home??0); const won=isH?m.teams.home.winner:m.teams.away.winner; const draw=m.teams.home.winner===null&&m.teams.away.winner===null; if(won)wins+=w; else if(draw)draws+=w; gf+=scored*w; ga+=conceded*w; if(scored>0&&conceded>0)btts+=w; if(scored+conceded>2)over25+=w; });
   return {winRate:wins/tw,drawRate:draws/tw,avgGF:gf/tw,avgGA:ga/tw,bttsRate:btts/tw,over25Rate:over25/tw,matchCount:finished.length};
@@ -142,7 +141,8 @@ function computePredictions(homeStats,awayStats,homeForm,awayForm,homeName,awayN
   pH=Math.max(0.05,Math.min(0.85,pH));pA=Math.max(0.05,Math.min(0.85,pA));
   let pD=Math.max(0.1,1-pH-pA);const s=pH+pD+pA;pH/=s;pD/=s;pA/=s;
   const r=[{label:`Victoire ${homeName}`,pct:pH},{label:"Match nul",pct:pD},{label:`Victoire ${awayName}`,pct:pA}].sort((a,b)=>b.pct-a.pct)[0];
-  const pO=Math.max(0.1,Math.min(0.9,(ha+aa-1.5)/3+0.5))*0.5+((homeForm.over25Rate+awayForm.over25Rate)/2)*0.5;
+  const eg=ha+aa;
+  const pO=Math.max(0.1,Math.min(0.9,(eg-1.5)/3+0.5))*0.5+((homeForm.over25Rate+awayForm.over25Rate)/2)*0.5;
   const pB=Math.max(0.15,Math.min(0.9,ha/1.4))*Math.max(0.15,Math.min(0.9,aa/1.4))*0.5+((homeForm.bttsRate+awayForm.bttsRate)/2)*0.5;
   const pDH=pH+pD,pDA=pA+pD;
   const dc=pDH>=pDA?{label:`DC: ${homeName} ou nul`,pct:pDH}:{label:`DC: ${awayName} ou nul`,pct:pDA};
@@ -181,8 +181,8 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
   push(`${awayName} gagne sans encaisser`,pWTNA);
   push('Match nul avec buts (Score Draw)',pScoreDraw);
   push('0-0 (Aucun but)',pNilNil);
-  const htftC=[{label:`${homeName}/${homeName}`,p:htftMap['1/1']||0},{label:`${homeName}/Nul`,p:htftMap['1/X']||0},{label:`Nul/Nul`,p:htftMap['X/X']||0},{label:`Nul/${homeName}`,p:htftMap['X/1']||0},{label:`Nul/${awayName}`,p:htftMap['X/2']||0},{label:`${awayName}/${awayName}`,p:htftMap['2/2']||0},{label:`${awayName}/Nul`,p:htftMap['2/X']||0},{label:`${awayName}/${homeName}`,p:htftMap['2/1']||0},{label:`${homeName}/${awayName}`,p:htftMap['1/2']||0}].sort((a,b)=>b.p-a.p);
-  markets.push({type:'Mi-temps / Final (HT-FT)',pick:htftC[0].label,confidence:clamp(htftC[0].p*3)});
+  const htftCombos=[{label:`${homeName}/${homeName}`,p:htftMap['1/1']||0},{label:`${homeName}/Nul`,p:htftMap['1/X']||0},{label:`Nul/Nul`,p:htftMap['X/X']||0},{label:`Nul/${homeName}`,p:htftMap['X/1']||0},{label:`Nul/${awayName}`,p:htftMap['X/2']||0},{label:`${awayName}/${awayName}`,p:htftMap['2/2']||0},{label:`${awayName}/Nul`,p:htftMap['2/X']||0},{label:`${awayName}/${homeName}`,p:htftMap['2/1']||0},{label:`${homeName}/${awayName}`,p:htftMap['1/2']||0}].sort((a,b)=>b.p-a.p);
+  markets.push({type:'Mi-temps / Final (HT-FT)',pick:htftCombos[0].label,confidence:clamp(htftCombos[0].p*3)});
   push(`${homeName} gagne les deux mi-temps`,pWBH);
   push(`${awayName} gagne les deux mi-temps`,pWBA);
   push('Nul dans les deux mi-temps',pDrawBoth);
@@ -204,16 +204,62 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
   push('Ni penalty ni carton rouge',clamp(1-pSO-pPen));
   push(`${homeName} se qualifie`,pHQ);push(`${awayName} se qualifie`,pAQ);
   push(`${homeName} se qualifie en temps réglementaire`,pH);push(`${awayName} se qualifie en temps réglementaire`,pA);
-  // Correction pour matchs en cours
+
+  // === CORRECTION COMPLÈTE POUR MATCHS EN COURS ===
   if(currentHomeGoals!==null&&currentAwayGoals!==null){
-    const hG=currentHomeGoals,aG=currentAwayGoals,isHalf=elapsedMin!==null&&elapsedMin>45,tG=hG+aG;
+    const hG=currentHomeGoals,aG=currentAwayGoals,tG=hG+aG;
+    const isHT=elapsedMin!==null&&elapsedMin===45;
+    const is2H=elapsedMin!==null&&elapsedMin>45;
+    const htResult=(is2H||isHT)?(hG>aG?'1':hG<aG?'2':'X'):null;
     markets.forEach(m=>{
-      if(m.type.includes('chaque mi-temps')&&isHalf&&(hG===0||aG===0)){m.pick='Non';m.confidence=0.99;}
-      if(m.type.includes('Aucun but')&&tG>0){m.pick='Non';m.confidence=0.99;}
-      if(m.type.includes('2.5 buts')&&m.pick==='Plus de 2.5 buts'&&tG>=3)m.confidence=0.99;
+      // Plus/Moins de 2.5 buts
+      if(m.type.includes('2.5 buts')&&tG>=3){m.pick='Oui';m.confidence=0.99;}
+      if(m.type.includes('2.5 buts')&&m.pick==='Moins de 2.5 buts'&&tG>=3){m.pick='Non';m.confidence=0.99;}
+      // 0-0 et Aucun but
+      if((m.type.includes('0-0')||m.type.includes('Aucun but'))&&tG>0){m.pick='Non';m.confidence=0.99;}
+      else if((m.type.includes('0-0')||m.type.toLowerCase().includes('aucun but dans les deux'))&&tG===0&&is2H&&elapsedMin>80){m.pick='Oui';m.confidence=0.88;}
+      // Win To Nil
       if(m.type.includes(`${homeName} gagne sans encaisser`)&&aG>0){m.pick='Non';m.confidence=0.99;}
       if(m.type.includes(`${awayName} gagne sans encaisser`)&&hG>0){m.pick='Non';m.confidence=0.99;}
-      if(m.type.includes('Score Draw')&&isHalf&&elapsedMin>70){if(hG===0&&aG===0){m.pick='Non';m.confidence=0.85;}else if(hG===aG&&hG>0){m.pick='Oui';m.confidence=0.75;}}
+      if((m.type.includes('Any Team')||m.type.includes('Une équipe gagne sans'))&&hG>0&&aG>0){m.pick='Non';m.confidence=0.99;}
+      // BTTS chaque mi-temps
+      if(m.type.includes('chaque mi-temps')&&is2H&&(hG===0||aG===0)){m.pick='Non';m.confidence=0.99;}
+      // Score Draw
+      if(m.type.includes('Score Draw')){
+        if(hG!==aG){m.pick='Non';m.confidence=0.75;}
+        else if(hG===aG&&hG>0&&is2H&&elapsedMin>80){m.pick='Oui';m.confidence=0.80;}
+        else if(hG===0&&aG===0&&is2H&&elapsedMin>80){m.pick='Non';m.confidence=0.80;}
+      }
+      // HT-FT : résultat 1ère MT fixé
+      if(m.type.includes('HT-FT')&&htResult!==null){
+        const htLabel=htResult==='1'?homeName:htResult==='2'?awayName:'Nul';
+        if(!m.pick.startsWith(htLabel)){m.pick='Non';m.confidence=0.99;}
+      }
+      // Team Win Both Halves
+      if(m.type.includes(`${homeName} gagne les deux mi-temps`)&&is2H&&htResult!=='1'){m.pick='Non';m.confidence=0.99;}
+      if(m.type.includes(`${awayName} gagne les deux mi-temps`)&&is2H&&htResult!=='2'){m.pick='Non';m.confidence=0.99;}
+      // Draw Both Halves
+      if(m.type.includes('Nul dans les deux mi-temps')){
+        if(is2H&&htResult!=='X'){m.pick='Non';m.confidence=0.99;}
+        else if(is2H&&htResult==='X'&&elapsedMin>80&&hG===aG){m.pick='Oui';m.confidence=0.75;}
+      }
+      // 1er but 1ère MT : déjà joué
+      if(m.type.includes('1er but 1ère mi-temps')&&is2H){
+        if(hG>0&&aG===0){m.pick=`${homeName} marque en 1er`;m.confidence=0.99;}
+        else if(aG>0&&hG===0){m.pick=`${awayName} marque en 1er`;m.confidence=0.99;}
+        else if(hG===0&&aG===0){m.pick='Aucun but en 1ère MT';m.confidence=0.99;}
+      }
+      // Buts avant X minutes
+      [15,30,45,60,75].forEach(min=>{
+        if(m.type.includes(`avant la ${min}e`)&&elapsedMin!==null&&elapsedMin>=min){
+          m.pick=tG>0?'Oui':'Non';m.confidence=0.99;
+        }
+      });
+      // Qualification
+      if(m.type.includes('se qualifie en temps réglementaire')&&is2H&&elapsedMin>85){
+        if(m.type.includes(homeName)&&hG>aG){m.pick='Oui';m.confidence=0.95;}
+        if(m.type.includes(awayName)&&aG>hG){m.pick='Oui';m.confidence=0.95;}
+      }
     });
   }
   return markets.sort((a,b)=>b.confidence-a.confidence);
