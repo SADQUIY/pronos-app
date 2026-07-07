@@ -64,7 +64,6 @@
   .pre-header-note { font-size: 11px; color: #8a9ab8; margin-bottom: 8px; }
   .stats-box { font-size: 11px; color: #4a6090; background: #f0f4ff; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.6; }
   .form-box { font-size: 11px; color: #4a6090; background: #f0f8f0; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.6; }
-  .markets-divider { font-size: 11px; font-weight: 700; color: #1a3a6b; margin: 12px 0 6px; padding-top: 10px; border-top: 2px solid #e8ecf4; }
   .footer-note { font-size: 11px; color: #b0b8c8; text-align: center; margin-top: 20px; line-height: 1.5; padding: 0 12px; }
   .empty-tab { text-align: center; margin-top: 60px; color: #8a9ab8; font-size: 14px; }
   .spin { animation: spin 1s linear infinite; display: inline-block; }
@@ -189,7 +188,7 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
   const lhR=lh90*fracRemaining, laR=la90*fracRemaining;
   const FH=0.44, lh1=lh90*FH, la1=la90*FH, lh2=lh90*(1-FH), la2=la90*(1-FH);
   function matrix(lH,lA){const m=[];for(let i=0;i<=MAX;i++){m[i]=[];for(let j=0;j<=MAX;j++)m[i][j]=pmf(lH,i)*pmf(lA,j);}return m;}
-  const M90=matrix(lh90,la90);
+  const MR=matrix(lhR,laR), M90=matrix(lh90,la90);
   const markets=[];
   function push(type,pYes){const c=clamp(Math.max(pYes,1-pYes));markets.push({type,pick:pYes>=0.5?'Oui':'Non',confidence:c});}
 
@@ -211,8 +210,8 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
   if(isLiveMatch){
     push('0-0 (Aucun but)',tG>0?0:pmf(lhR,0)*pmf(laR,0));
     let pSD=0;
-    if(hG===aG&&hG>0) pSD=pD;
-    else if(hG===aG&&hG===0){for(let i=1;i<=MAX;i++)pSD+=pmf(lhR,i)*pmf(laR,i);}
+    if(hG===aG&&hG>0)pSD=pD;
+    else if(hG===aG&&hG===0){for(let i=1;i<=MAX;i++)pSD+=MR[i][i];}
     else pSD=pD*(hG>0&&aG>0?1:0.5);
     push('Match nul avec buts (Score Draw)',pSD);
   } else {
@@ -423,8 +422,17 @@ async function showPredictions(fixture,container,btn) {
       if(ls)sn=`<div class="stats-box">📊 <b>${home.name}</b>: ${ls.hP}% possession · ${ls.hSh} tirs (${ls.hShOn} cadrés) · ${ls.hC} corners<br>📊 <b>${away.name}</b>: ${ls.aP}% possession · ${ls.aSh} tirs (${ls.aShOn} cadrés) · ${ls.aC} corners</div>`;
       html=`<div class="live-header-note">🔴 ANALYSE EN TEMPS RÉEL — ${fixture.fixture.status.elapsed}' | Score: ${fixture.goals.home}-${fixture.goals.away}</div>`;
       html+=sn;
-      const allLive=computeExtendedMarkets(nf,nf,pH,pD,pA,pBTTSL,pOver25L,home.name,away.name,hG,aG,elapsed).sort((a,b)=>b.confidence-a.confidence).slice(0,20);
-      html+=allLive.map(p=>`<div class="pred-item"><div class="pred-type">${p.type}</div><div class="pred-pick">${p.pick}</div>${confidenceBarHTML(p.confidence)}</div>`).join("");
+      const CONCLUDED=['gagne sans encaisser','0-0','aucun but','les deux équipes marquent dans chaque mi-temps','nul dans les deux mi-temps','gagne les deux mi-temps','total buts over 0.5','total buts over 1.5','les deux équipes marquent (btts)'];
+      function isConcluded(m){if(m.confidence<0.97)return false;return CONCLUDED.some(kw=>m.type.toLowerCase().includes(kw));}
+      const allLive=computeExtendedMarkets(nf,nf,pH,pD,pA,pBTTSL,pOver25L,home.name,away.name,hG,aG,elapsed)
+        .filter(p=>!isConcluded(p))
+        .sort((a,b)=>b.confidence-a.confidence)
+        .slice(0,15);
+      if(allLive.length>0){
+        html+=allLive.map(p=>`<div class="pred-item"><div class="pred-type">${p.type}</div><div class="pred-pick">${p.pick}</div>${confidenceBarHTML(p.confidence)}</div>`).join("");
+      } else {
+        html+=`<div style="color:#8a9ab8;font-size:12px;text-align:center;padding:12px 0;">⏱ Match trop avancé — aucun marché incertain restant.</div>`;
+      }
     } else {
       let result,homeForm,awayForm,pH,pD,pA,pBTTS,pOver25;
       if(isNationalTeamMatch(fixture)){
@@ -531,4 +539,4 @@ loadFixtures();
 setInterval(()=>loadFixtures(true),2*60*1000);
 </script>
 </body>
-</html>
+</html>l
