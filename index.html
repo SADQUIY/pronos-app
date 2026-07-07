@@ -64,6 +64,7 @@
   .pre-header-note { font-size: 11px; color: #8a9ab8; margin-bottom: 8px; }
   .stats-box { font-size: 11px; color: #4a6090; background: #f0f4ff; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.6; }
   .form-box { font-size: 11px; color: #4a6090; background: #f0f8f0; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.6; }
+  .markets-divider { font-size: 11px; font-weight: 700; color: #1a3a6b; margin: 12px 0 6px; padding-top: 10px; border-top: 2px solid #e8ecf4; }
   .footer-note { font-size: 11px; color: #b0b8c8; text-align: center; margin-top: 20px; line-height: 1.5; padding: 0 12px; }
   .empty-tab { text-align: center; margin-top: 60px; color: #8a9ab8; font-size: 14px; }
   .spin { animation: spin 1s linear infinite; display: inline-block; }
@@ -148,7 +149,7 @@ function computePredictions(homeStats,awayStats,homeForm,awayForm,homeName,awayN
   const dc=pDH>=pDA?{label:`DC: ${homeName} ou nul`,pct:pDH}:{label:`DC: ${awayName} ou nul`,pct:pDA};
   return {
     predictions:[{type:"Résultat (1N2)",pick:r.label,confidence:r.pct},{type:"Total de buts",pick:pO>=0.5?"Plus de 2.5 buts":"Moins de 2.5 buts",confidence:pO>=0.5?pO:1-pO},{type:"BTTS",pick:pB>=0.5?"Les deux équipes marquent: Oui":"Les deux équipes marquent: Non",confidence:pB>=0.5?pB:1-pB},{type:"Double chance",pick:dc.label,confidence:Math.min(0.95,dc.pct)}].sort((a,b)=>b.confidence-a.confidence),
-    formNote:`📈 Forme ${homeName}: ${homeForm.matchCount||0} matchs · ${Math.round(homeForm.winRate*100)}% victoires · ${homeForm.avgGF?.toFixed(1)||"?"} buts/match\n📈 Forme ${awayName}: ${awayForm.matchCount||0} matchs · ${Math.round(awayForm.winRate*100)}% victoires · ${awayForm.avgGF?.toFixed(1)||"?"} buts/match`,
+    formNote:`📈 Forme ${homeName}: ${homeForm.matchCount||0} matchs analysés · ${Math.round(homeForm.winRate*100)}% victoires · ${homeForm.avgGF?.toFixed(1)||"?"} buts/match\n📈 Forme ${awayName}: ${awayForm.matchCount||0} matchs analysés · ${Math.round(awayForm.winRate*100)}% victoires · ${awayForm.avgGF?.toFixed(1)||"?"} buts/match`,
     pH,pD,pA,pBTTS:pB,pOver25:pO,homeForm,awayForm,
   };
 }
@@ -163,46 +164,48 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
   const lh1=lh*FH,la1=la*FH,lh2=lh*(1-FH),la2=la*(1-FH);
   function matrix(lH,lA){const m=[];for(let i=0;i<=MAX;i++){m[i]=[];for(let j=0;j<=MAX;j++)m[i][j]=pmf(lH,i)*pmf(lA,j);}return m;}
   const M=matrix(lh,la),HT=matrix(lh1,la1),SH=matrix(lh2,la2);
-  let pWTNH=0,pWTNA=0,pScoreDraw=0,pNilNil=0,pWBH=0,pWBA=0,pDrawBoth=0,pBTTSEH=0;
-  let pLNLH=0,pLNLA=0,pN1=0,pN2=0;
-  let pHO05=0,pHO15=0,pAO05=0,pAO15=0,pHW1D=0,pAW1D=0;
-  const htftMap={},igMap={15:0,30:0,45:0,60:0,75:0};
-  for(let i=0;i<=MAX;i++)for(let j=0;j<=MAX;j++){const p=M[i][j];if(i>j&&j===0)pWTNH+=p;if(j>i&&i===0)pWTNA+=p;if(i===j&&i>0)pScoreDraw+=p;if(i===0&&j===0)pNilNil+=p;if(i>0)pHO05+=p;if(i>1)pHO15+=p;if(j>0)pAO05+=p;if(j>1)pAO15+=p;if(i>j&&Math.abs(i-j)===1)pHW1D+=p;if(i===j)pHW1D+=p;if(j>i&&Math.abs(j-i)===1)pAW1D+=p;if(i===j)pAW1D+=p;}
-  for(let i=0;i<=MAX;i++)for(let j=0;j<=MAX;j++){const ph=HT[i][j];if(!ph)continue;const htR=i>j?'1':i===j?'X':'2';for(let k=0;k<=MAX;k++)for(let l=0;l<=MAX;l++){const ps=SH[k][l];if(!ps)continue;const w=ph*ps,fh=i+k,fa=j+l;const ftR=fh>fa?'1':fh===fa?'X':'2';htftMap[htR+'/'+ftR]=(htftMap[htR+'/'+ftR]||0)+w;if(i>j&&k>l)pWBH+=w;if(i<j&&k<l)pWBA+=w;if(i===j&&k===l)pDrawBoth+=w;if(i>0&&j>0&&k>0&&l>0)pBTTSEH+=w;if(i===0&&j===0)pN1+=ph;if(k===0&&l===0)pN2+=ps;if((i>j||(i===j))&&fh>=fa)pLNLH+=w;if((i<j||(i===j))&&fa>=fh)pLNLA+=w;}}
-  [15,30,45,60,75].forEach(min=>{igMap[min]=1-pmf((lh+la)*(min/90),0);});
-  const pAWTN=pWTNH+pWTNA,pNeither=pN1*pN2;
-  const pHQ=Math.min(0.95,pH+pD*0.5),pAQ=Math.min(0.95,pA+pD*0.5);
+  let pWTNH=0,pWTNA=0,pScoreDraw=0,pNilNil=0,pHTHome=0,pHTDraw=0,pHTAway=0;
+  let pWinBothHome=0,pWinBothAway=0,pDrawBoth=0,pBTTSEachHalf=0;
+  let pLeadNoLoseHome=0,pLeadNoLoseAway=0,pNeither1=0,pNeither2=0;
+  let pHomeOver05=0,pHomeOver15=0,pAwayOver05=0,pAwayOver15=0;
+  let pHomeWinExact1orDraw=0,pAwayWinExact1orDraw=0;
+  const htftMap={},intervalGoals={15:0,30:0,45:0,60:0,75:0};
+  for(let i=0;i<=MAX;i++)for(let j=0;j<=MAX;j++){const p=M[i][j];if(i>j&&j===0)pWTNH+=p;if(j>i&&i===0)pWTNA+=p;if(i===j&&i>0)pScoreDraw+=p;if(i===0&&j===0)pNilNil+=p;if(i>0)pHomeOver05+=p;if(i>1)pHomeOver15+=p;if(j>0)pAwayOver05+=p;if(j>1)pAwayOver15+=p;if(i>j&&Math.abs(i-j)===1)pHomeWinExact1orDraw+=p;if(i===j)pHomeWinExact1orDraw+=p;if(j>i&&Math.abs(j-i)===1)pAwayWinExact1orDraw+=p;if(i===j)pAwayWinExact1orDraw+=p;}
+  for(let i=0;i<=MAX;i++)for(let j=0;j<=MAX;j++){const ph=HT[i][j];if(!ph)continue;const htR=i>j?'1':i===j?'X':'2';if(i>j)pHTHome+=ph;else if(i===j)pHTDraw+=ph;else pHTAway+=ph;for(let k=0;k<=MAX;k++)for(let l=0;l<=MAX;l++){const ps=SH[k][l];if(!ps)continue;const w=ph*ps,fh=i+k,fa=j+l;const ftR=fh>fa?'1':fh===fa?'X':'2';htftMap[htR+'/'+ftR]=(htftMap[htR+'/'+ftR]||0)+w;if(i>j&&k>l)pWinBothHome+=w;if(i<j&&k<l)pWinBothAway+=w;if(i===j&&k===l)pDrawBoth+=w;if(i>0&&j>0&&k>0&&l>0)pBTTSEachHalf+=w;if(i===0&&j===0)pNeither1+=ph;if(k===0&&l===0)pNeither2+=ps;if((i>j||(i===j&&htR==='X'))&&fh>=fa)pLeadNoLoseHome+=w;if((i<j||(i===j&&htR==='X'))&&fa>=fh)pLeadNoLoseAway+=w;}}
+  [15,30,45,60,75].forEach(min=>{intervalGoals[min]=1-pmf((lh+la)*(min/90),0);});
+  const pAnyWinToNil=pWTNH+pWTNA,pNeither=pNeither1*pNeither2;
+  const pHomeQualifies=Math.min(0.95,pH+pD*0.5),pAwayQualifies=Math.min(0.95,pA+pD*0.5);
   const hFR=safe(homeForm?.avgGA)*0.15+0.08,aFR=safe(awayForm?.avgGA)*0.15+0.08;
-  const pSO=clamp(1-Math.pow(1-hFR-aFR,2)),pPen=clamp(1-Math.pow(1-(hFR+aFR)*0.4,1.5));
+  const pSendingOff=1-Math.pow(1-hFR-aFR,2),pPenalty=1-Math.pow(1-(hFR+aFR)*0.4,1.5);
   const markets=[];
   function push(type,pYes){const pNo=1-pYes;markets.push({type,pick:pYes>=pNo?'Oui':'Non',confidence:clamp(Math.max(pYes,pNo))});}
-  push('Une équipe gagne sans encaisser (Any Team To Win To Nil)',pAWTN);
+  push('Une équipe gagne sans encaisser (Any Team To Win To Nil)',pAnyWinToNil);
   push(`${homeName} gagne sans encaisser`,pWTNH);
   push(`${awayName} gagne sans encaisser`,pWTNA);
   push('Match nul avec buts (Score Draw)',pScoreDraw);
   push('0-0 (Aucun but)',pNilNil);
   const htftCombos=[{label:`${homeName}/${homeName}`,p:htftMap['1/1']||0},{label:`${homeName}/Nul`,p:htftMap['1/X']||0},{label:`Nul/Nul`,p:htftMap['X/X']||0},{label:`Nul/${homeName}`,p:htftMap['X/1']||0},{label:`Nul/${awayName}`,p:htftMap['X/2']||0},{label:`${awayName}/${awayName}`,p:htftMap['2/2']||0},{label:`${awayName}/Nul`,p:htftMap['2/X']||0},{label:`${awayName}/${homeName}`,p:htftMap['2/1']||0},{label:`${homeName}/${awayName}`,p:htftMap['1/2']||0}].sort((a,b)=>b.p-a.p);
   markets.push({type:'Mi-temps / Final (HT-FT)',pick:htftCombos[0].label,confidence:clamp(htftCombos[0].p*3)});
-  push(`${homeName} gagne les deux mi-temps`,pWBH);
-  push(`${awayName} gagne les deux mi-temps`,pWBA);
+  push(`${homeName} gagne les deux mi-temps`,pWinBothHome);
+  push(`${awayName} gagne les deux mi-temps`,pWinBothAway);
   push('Nul dans les deux mi-temps',pDrawBoth);
-  push('Les deux équipes marquent dans chaque mi-temps',pBTTSEH);
+  push('Les deux équipes marquent dans chaque mi-temps',pBTTSEachHalf);
   push('Aucun but dans les deux mi-temps',pNeither);
   const pFG1H=lh1/(lh1+la1+0.01),pFG1A=la1/(lh1+la1+0.01);
   const pFG2H=lh2/(lh2+la2+0.01),pFG2A=la2/(lh2+la2+0.01);
   markets.push({type:'1er but 1ère mi-temps',pick:pFG1H>=pFG1A?`${homeName} marque en 1er`:`${awayName} marque en 1er`,confidence:clamp(Math.max(pFG1H,pFG1A))});
   markets.push({type:'1er but 2ème mi-temps',pick:pFG2H>=pFG2A?`${homeName} marque en 1er`:`${awayName} marque en 1er`,confidence:clamp(Math.max(pFG2H,pFG2A))});
-  [15,30,45,60,75].forEach(min=>push(`But avant la ${min}e minute`,igMap[min]));
+  [15,30,45,60,75].forEach(min=>push(`But avant la ${min}e minute`,intervalGoals[min]));
   [[1,15],[1,20],[1,25],[1,30],[1,35],[1,40]].forEach(([s,e])=>{push(`But de ${s}' à ${e}' (1ère MT)`,1-pmf((lh+la)*((e-s)/90),0));});
   const rtC=[{label:`${homeName} + Plus de 2.5 buts`,p:pH*pOver25},{label:`${awayName} + Plus de 2.5 buts`,p:pA*pOver25},{label:`Nul + Moins de 2.5 buts`,p:pD*(1-pOver25)},{label:`${homeName} + BTTS Oui`,p:pH*pBTTS},{label:`${awayName} + BTTS Oui`,p:pA*pBTTS},{label:`Nul + BTTS Oui`,p:pD*pBTTS},{label:`${homeName} + Moins de 2.5 buts`,p:pH*(1-pOver25)},{label:`${awayName} + Moins de 2.5 buts`,p:pA*(1-pOver25)}].sort((a,b)=>b.p-a.p);
   markets.push({type:'Résultat + Total (meilleure combo)',pick:rtC[0].label,confidence:clamp(rtC[0].p*2.5)});
-  push(`${homeName} marque (Over 0.5)`,pHO05);push(`${awayName} marque (Over 0.5)`,pAO05);
-  push(`${homeName} marque 2+ buts (Over 1.5)`,pHO15);push(`${awayName} marque 2+ buts (Over 1.5)`,pAO15);
-  push(`${homeName} mène et ne perd pas`,pLNLH);push(`${awayName} mène et ne perd pas`,pLNLA);
-  push(`${homeName} gagne par 1 but ou nul`,pHW1D);push(`${awayName} gagne par 1 but ou nul`,pAW1D);
-  push('Carton rouge dans le match',pSO);push('Penalty sifflé dans le match',pPen);
-  push('Ni penalty ni carton rouge',clamp(1-pSO-pPen));
-  push(`${homeName} se qualifie`,pHQ);push(`${awayName} se qualifie`,pAQ);
+  push(`${homeName} marque (Over 0.5)`,pHomeOver05);push(`${awayName} marque (Over 0.5)`,pAwayOver05);
+  push(`${homeName} marque 2+ buts (Over 1.5)`,pHomeOver15);push(`${awayName} marque 2+ buts (Over 1.5)`,pAwayOver15);
+  push(`${homeName} mène et ne perd pas`,pLeadNoLoseHome);push(`${awayName} mène et ne perd pas`,pLeadNoLoseAway);
+  push(`${homeName} gagne par 1 but ou nul`,pHomeWinExact1orDraw);push(`${awayName} gagne par 1 but ou nul`,pAwayWinExact1orDraw);
+  push('Carton rouge dans le match (Sending Off)',pSendingOff);push('Penalty sifflé dans le match',pPenalty);
+  push('Ni penalty ni carton rouge',1-Math.min(0.95,pSendingOff+pPenalty));
+  push(`${homeName} se qualifie`,pHomeQualifies);push(`${awayName} se qualifie`,pAwayQualifies);
   push(`${homeName} se qualifie en temps réglementaire`,pH);push(`${awayName} se qualifie en temps réglementaire`,pA);
 
   // === CORRECTION COMPLÈTE POUR MATCHS EN COURS ===
@@ -210,56 +213,26 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
     const hG=currentHomeGoals,aG=currentAwayGoals,tG=hG+aG;
     const isHT=elapsedMin!==null&&elapsedMin===45;
     const is2H=elapsedMin!==null&&elapsedMin>45;
+    const is1H=elapsedMin!==null&&elapsedMin>0&&elapsedMin<=45;
     const htResult=(is2H||isHT)?(hG>aG?'1':hG<aG?'2':'X'):null;
     markets.forEach(m=>{
-      // Plus/Moins de 2.5 buts
-      if(m.type.includes('2.5 buts')&&tG>=3){m.pick='Oui';m.confidence=0.99;}
-      if(m.type.includes('2.5 buts')&&m.pick==='Moins de 2.5 buts'&&tG>=3){m.pick='Non';m.confidence=0.99;}
-      // 0-0 et Aucun but
-      if((m.type.includes('0-0')||m.type.includes('Aucun but'))&&tG>0){m.pick='Non';m.confidence=0.99;}
-      else if((m.type.includes('0-0')||m.type.toLowerCase().includes('aucun but dans les deux'))&&tG===0&&is2H&&elapsedMin>80){m.pick='Oui';m.confidence=0.88;}
-      // Win To Nil
+      if(tG>=3&&m.type.includes('2.5 buts')){m.pick='Plus de 2.5 buts ✅';m.confidence=0.99;}
+      if(tG>0&&(m.type.includes('0-0')||m.type.toLowerCase().includes('aucun but'))){m.pick='Non';m.confidence=0.99;}
       if(m.type.includes(`${homeName} gagne sans encaisser`)&&aG>0){m.pick='Non';m.confidence=0.99;}
       if(m.type.includes(`${awayName} gagne sans encaisser`)&&hG>0){m.pick='Non';m.confidence=0.99;}
       if((m.type.includes('Any Team')||m.type.includes('Une équipe gagne sans'))&&hG>0&&aG>0){m.pick='Non';m.confidence=0.99;}
-      // BTTS chaque mi-temps
       if(m.type.includes('chaque mi-temps')&&is2H&&(hG===0||aG===0)){m.pick='Non';m.confidence=0.99;}
-      // Score Draw
-      if(m.type.includes('Score Draw')){
-        if(hG!==aG){m.pick='Non';m.confidence=0.75;}
-        else if(hG===aG&&hG>0&&is2H&&elapsedMin>80){m.pick='Oui';m.confidence=0.80;}
-        else if(hG===0&&aG===0&&is2H&&elapsedMin>80){m.pick='Non';m.confidence=0.80;}
-      }
-      // HT-FT : résultat 1ère MT fixé
-      if(m.type.includes('HT-FT')&&htResult!==null){
-        const htLabel=htResult==='1'?homeName:htResult==='2'?awayName:'Nul';
-        if(!m.pick.startsWith(htLabel)){m.pick='Non';m.confidence=0.99;}
-      }
-      // Team Win Both Halves
+      if(m.type.includes('Score Draw')){if(hG!==aG){m.pick='Non';m.confidence=0.75;}else if(hG===aG&&hG>0&&is2H&&elapsedMin>80){m.pick='Oui';m.confidence=0.80;}else if(hG===0&&aG===0&&is2H&&elapsedMin>80){m.pick='Non';m.confidence=0.80;}}
+      if(m.type.includes('HT-FT')){if(is1H){m.confidence=0.01;}else if(htResult!==null){const htLabel=htResult==='1'?homeName:htResult==='2'?awayName:'Nul';if(!m.pick.startsWith(htLabel)){m.pick='Non';m.confidence=0.99;}}}
       if(m.type.includes(`${homeName} gagne les deux mi-temps`)&&is2H&&htResult!=='1'){m.pick='Non';m.confidence=0.99;}
       if(m.type.includes(`${awayName} gagne les deux mi-temps`)&&is2H&&htResult!=='2'){m.pick='Non';m.confidence=0.99;}
-      // Draw Both Halves
-      if(m.type.includes('Nul dans les deux mi-temps')){
-        if(is2H&&htResult!=='X'){m.pick='Non';m.confidence=0.99;}
-        else if(is2H&&htResult==='X'&&elapsedMin>80&&hG===aG){m.pick='Oui';m.confidence=0.75;}
-      }
-      // 1er but 1ère MT : déjà joué
-      if(m.type.includes('1er but 1ère mi-temps')&&is2H){
-        if(hG>0&&aG===0){m.pick=`${homeName} marque en 1er`;m.confidence=0.99;}
-        else if(aG>0&&hG===0){m.pick=`${awayName} marque en 1er`;m.confidence=0.99;}
-        else if(hG===0&&aG===0){m.pick='Aucun but en 1ère MT';m.confidence=0.99;}
-      }
-      // Buts avant X minutes
-      [15,30,45,60,75].forEach(min=>{
-        if(m.type.includes(`avant la ${min}e`)&&elapsedMin!==null&&elapsedMin>=min){
-          m.pick=tG>0?'Oui':'Non';m.confidence=0.99;
-        }
-      });
-      // Qualification
-      if(m.type.includes('se qualifie en temps réglementaire')&&is2H&&elapsedMin>85){
-        if(m.type.includes(homeName)&&hG>aG){m.pick='Oui';m.confidence=0.95;}
-        if(m.type.includes(awayName)&&aG>hG){m.pick='Oui';m.confidence=0.95;}
-      }
+      if(m.type.includes('Nul dans les deux mi-temps')){if(is2H&&htResult!=='X'){m.pick='Non';m.confidence=0.99;}else if(is2H&&htResult==='X'&&elapsedMin>80&&hG===aG){m.pick='Oui';m.confidence=0.75;}}
+      if(m.type.includes('1er but 1ère mi-temps')&&is2H){if(hG>0&&aG===0){m.pick=`${homeName} marque en 1er`;m.confidence=0.99;}else if(aG>0&&hG===0){m.pick=`${awayName} marque en 1er`;m.confidence=0.99;}else if(tG>0){m.pick='But marqué en 1ère MT';m.confidence=0.99;}else{m.pick='Aucun but en 1ère MT';m.confidence=0.99;}}
+      [15,30,45,60,75].forEach(min=>{if(m.type.includes(`avant la ${min}e`)&&elapsedMin!==null&&elapsedMin>min){if(tG===0){m.pick='Non';m.confidence=0.99;}}});
+      if(m.type.includes('Carton rouge')&&m.confidence>0.75){m.confidence=0.75;}
+      if(m.type.includes('Ni penalty ni carton rouge')&&m.confidence>0.75){m.confidence=0.75;}
+      if(m.type.includes('Penalty sifflé')&&m.confidence>0.70){m.confidence=0.70;}
+      if(m.type.includes('se qualifie en temps réglementaire')&&is2H&&elapsedMin>85){if(m.type.includes(homeName)&&hG>aG){m.pick='Oui';m.confidence=0.95;}if(m.type.includes(awayName)&&aG>hG){m.pick='Oui';m.confidence=0.95;}}
     });
   }
   return markets.sort((a,b)=>b.confidence-a.confidence);
@@ -342,8 +315,13 @@ async function showPredictions(fixture,container,btn) {
         const nf={avgGF:gr*45||1.2,avgGA:gr*45||1.2,winRate:0.33,bttsRate:pBTTSL,over25Rate:pOver25L,matchCount:0};
         const extLive=computeExtendedMarkets(nf,nf,pH,pD,pA,pBTTSL,pOver25L,home.name,away.name,hG,aG,elapsed);
         const baseLiveTypes=predictions.map(p=>p.type);
-        const topLive=extLive.filter(p=>p.confidence>=0.70&&!baseLiveTypes.some(t=>p.type.includes(t.substring(0,8)))).slice(0,12);
-        if(topLive.length>0){html+=`<div style="font-size:11px;font-weight:700;color:#e63946;margin:12px 0 6px;padding-top:10px;border-top:2px solid #fde8ea;">📊 MARCHÉS SUPPLÉMENTAIRES LIVE (≥70%)</div>`;html+=topLive.map(p=>`<div class="pred-item"><div class="pred-type">${p.type}</div><div class="pred-pick">${p.pick}</div>${confidenceBarHTML(p.confidence)}</div>`).join("");}
+        const CONCLUDED=['gagne sans encaisser','0-0','aucun but','1er but 1ère mi-temps','but de 1\' à','but avant la 15','but avant la 30'];
+        function isConcluded(m){if(m.confidence<0.97)return false;return CONCLUDED.some(kw=>m.type.toLowerCase().includes(kw.toLowerCase()));}
+        const topLive=extLive.filter(p=>p.confidence>=0.70&&p.confidence>0.01&&!isConcluded(p)&&!baseLiveTypes.some(t=>p.type.includes(t.substring(0,8)))).slice(0,12);
+        if(topLive.length>0){
+          html+=`<div class="markets-divider">📊 MARCHÉS ENCORE JOUABLES (≥70%)</div>`;
+          html+=topLive.map(p=>`<div class="pred-item"><div class="pred-type">${p.type}</div><div class="pred-pick">${p.pick}</div>${confidenceBarHTML(p.confidence)}</div>`).join("");
+        }
       } catch(e){}
     } else {
       let result,homeForm,awayForm,pH,pD,pA,pBTTS,pOver25;
