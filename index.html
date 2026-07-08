@@ -290,6 +290,21 @@ async function getCalibratedModel(fixture) {
   return result;
 }
 
+function computeRemainingMarketProbs(hG, aG, lhRem, laRem) {
+  const M = buildScoreMatrix(lhRem, laRem, 6);
+  let pH=0,pD=0,pA=0,pO05=0,pO15=0,pO25=0,pO35=0,pBTTS=0,pWTNH=0,pWTNA=0,pHomeScores=0,pAwayScores=0;
+  for(let i=0;i<=6;i++) for(let j=0;j<=6;j++){
+    const p=M[i][j], fh=hG+i, fa=aG+j, tot=fh+fa;
+    if(fh>fa)pH+=p; else if(fh===fa)pD+=p; else pA+=p;
+    if(tot>0)pO05+=p; if(tot>1)pO15+=p; if(tot>2)pO25+=p; if(tot>3)pO35+=p;
+    if(fh>0&&fa>0)pBTTS+=p;
+    if(fh>0)pHomeScores+=p; if(fa>0)pAwayScores+=p;
+    if(fh>fa&&fa===0)pWTNH+=p;
+    if(fa>fh&&fh===0)pWTNA+=p;
+  }
+  return {pH,pD,pA,pO05,pO15,pO25,pO35,pBTTS,pWTNH,pWTNA,pHomeScores,pAwayScores};
+}
+
 async function showPredictions(fixture,container,btn) {
   const live=isLive(fixture);
   if(!live&&container.dataset.loaded==="true"){
@@ -315,7 +330,7 @@ async function showPredictions(fixture,container,btn) {
       if(ls)html+=`<div class="stats-box">📊 <b>${home.name}</b>: ${ls.hP}% poss · ${ls.hSh} tirs (${ls.hShOn} cadrés) · ${ls.hC} corners<br>📊 <b>${away.name}</b>: ${ls.aP}% poss · ${ls.aSh} tirs (${ls.aShOn} cadrés) · ${ls.aC} corners</div>`;
 
       const cal = await getCalibratedModel(fixture);
-      let pH,pD,pA,pO25;
+      let pH,pD,pA,extraRows=[];
       if (cal) {
         // Ancré sur le modèle Poisson pré-match (calibré sur les cotes 1xBet) :
         // on simule uniquement les buts du temps restant, puis on les ajoute au score actuel.
@@ -324,14 +339,28 @@ async function showPredictions(fixture,container,btn) {
         // La possession/domination influence légèrement la répartition des buts restants entre les 2 équipes
         const lhRem = Math.max(0.02, cal.lh*frac*(1+dom*0.3));
         const laRem = Math.max(0.02, cal.la*frac*(1-dom*0.3));
-        const M = buildScoreMatrix(lhRem, laRem, 6);
-        let ph=0,pd=0,pa=0,pOver=0;
-        for(let i=0;i<=6;i++) for(let j=0;j<=6;j++){
-          const p=M[i][j], fh=hG+i, fa=aG+j;
-          if(fh>fa) ph+=p; else if(fh===fa) pd+=p; else pa+=p;
-          if((fh+fa)>2) pOver+=p;
+        const mp = computeRemainingMarketProbs(hG, aG, lhRem, laRem);
+        pH=mp.pH;pD=mp.pD;pA=mp.pA;
+
+        // On ne garde que les marchés encore réellement incertains (ni quasi acquis, ni quasi exclus par le score actuel)
+        const isOpen = p => p>0.04 && p<0.96;
+        const candidates=[
+          {label:'Plus de 1.5 but (total)',p:mp.pO15},
+          {label:'Plus de 2.5 but (total)',p:mp.pO25},
+          {label:'Plus de 3.5 but (total)',p:mp.pO35},
+          {label:'Les deux équipes marquent',p:mp.pBTTS},
+          {label:`${home.name} marque encore`,p:mp.pHomeScores},
+          {label:`${away.name} marque encore`,p:mp.pAwayScores},
+          {label:`${home.name} gagne sans encaisser`,p:mp.pWTNH},
+          {label:`${away.name} gagne sans encaisser`,p:mp.pWTNA},
+        ].filter(r=>isOpen(r.p));
+        // Priorité aux marchés les plus incertains (proches de 50%), qui sont les plus utiles à suivre en live
+        candidates.sort((a,b)=>Math.abs(a.p-0.5)-Math.abs(b.p-0.5));
+        extraRows = candidates.slice(0,4);
+        if(extraRows.length===0){
+          // Tous les marchés annexes sont déjà décidés par le score actuel (ex: BTTS déjà validé, Over déjà atteint...)
+          extraRows=[{label:'Plus de 2.5 but (total)',p:mp.pO25}];
         }
-        pH=ph;pD=pd;pA=pa;pO25=pOver;
       } else {
         // Repli si les cotes 1xBet ne sont pas disponibles : heuristique basée sur score/temps/possession
         const sd=hG-aG, dom = ls?(ls.hP-50)/100:0;
@@ -341,12 +370,13 @@ async function showPredictions(fixture,container,btn) {
         else{pH=sd>0?0.48:sd<0?0.28:0.35+dom*0.1;pD=sd===0?0.30:0.22;pA=sd<0?0.48:sd>0?0.28:0.32-dom*0.1;}
         const sR=pH+pD+pA;pH/=sR;pD/=sR;pA/=sR;
         const tG=hG+aG,gr=elapsed>0?tG/elapsed:0,proj=tG+gr*remaining;
-        pO25=tG>=3?1:Math.max(0.05,Math.min(0.95,(proj-2.5)/2+0.5));
+        const pO25=tG>=3?1:Math.max(0.05,Math.min(0.95,(proj-2.5)/2+0.5));
+        extraRows=[{label:'Plus de 2.5 but (total)',p:pO25}];
         html+=`<div class="no-odds" style="padding:8px 0;text-align:left;">⚠️ Cotes 1xBet indisponibles : estimation basée sur le score/temps uniquement.</div>`;
       }
       html+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin-bottom:6px;">📊 Probabilités en temps réel</div>`;
       [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}].sort((a,b)=>b.p-a.p).forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
-      html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${pO25>=0.5?'Plus de 2.5 buts':'Moins de 2.5 buts'}</div>${confidenceBarHTML(pO25>=0.5?pO25:1-pO25)}</div>`;
+      extraRows.forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
     } else {
       html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
       const cal = await getCalibratedModel(fixture);
