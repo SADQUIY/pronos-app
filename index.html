@@ -65,6 +65,16 @@
   .value-badge.mid { background: #fff3cd; color: #856404; }
   .value-badge.low { background: #e8ecf4; color: #4a6090; }
   .no-odds { font-size: 12px; color: #8a9ab8; text-align: center; padding: 16px 0; line-height: 1.6; }
+  .top-pick { border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; background: linear-gradient(135deg, #1a3a6b, #2c5aa0); color: #fff; box-shadow: 0 2px 8px rgba(26,58,107,0.25); }
+  .top-pick-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.85; margin-bottom: 6px; }
+  .top-pick-market { font-size: 11px; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 2px; }
+  .top-pick-pick { font-size: 19px; font-weight: 800; margin-bottom: 10px; }
+  .top-pick-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .top-pick-odds { font-size: 12px; opacity: 0.9; }
+  .top-pick-odds b { opacity: 1; }
+  .top-pick-badge { font-size: 13px; font-weight: 800; background: rgba(255,255,255,0.18); padding: 4px 12px; border-radius: 20px; white-space: nowrap; }
+  .top-pick.live-top-pick { background: linear-gradient(135deg, #e63946, #b32330); }
+  .top-pick-note { font-size: 10px; opacity: 0.85; line-height: 1.4; }
   .odds-header { font-size: 11px; font-weight: 700; color: #1a3a6b; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #e8ecf4; }
   .live-header-note { font-size: 11px; color: #e63946; font-weight: 700; margin-bottom: 8px; }
   .stats-box { font-size: 11px; color: #4a6090; background: #f0f4ff; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.6; }
@@ -262,6 +272,16 @@ function renderValueBet(vb) {
   return `<div class="value-item ${cls}"><div class="value-market">${vb.market}</div><div class="value-pick">${vb.pick}</div><div class="value-row"><div class="value-odds">Cote: <b>${vb.odd}</b> · Implicite: <b>${vb.impliedProb}%</b> · Modèle: <b>${vb.modelProb}%</b></div><span class="value-badge ${badgeCls}">${label}</span></div></div>`;
 }
 
+function renderTopPick(vb) {
+  const icon = vb.edge>=10?'🔥':vb.edge>=6?'⚡':'✅';
+  return `<div class="top-pick"><div class="top-pick-label">🏆 Meilleur pari recommandé</div><div class="top-pick-market">${vb.market}</div><div class="top-pick-pick">${vb.pick}</div><div class="top-pick-row"><div class="top-pick-odds">Cote: <b>${vb.odd}</b> · Modèle: <b>${vb.modelProb}%</b> · Implicite: <b>${vb.impliedProb}%</b></div><span class="top-pick-badge">${icon} +${vb.edge}%</span></div></div>`;
+}
+
+function renderTopPickLive(label, p) {
+  const pct=Math.round(p*100), icon=pct>=75?'🔥':pct>=60?'⚡':'✅';
+  return `<div class="top-pick live-top-pick"><div class="top-pick-label">🏆 Meilleur pari en direct</div><div class="top-pick-pick">${label}</div><div class="top-pick-row"><div class="top-pick-odds top-pick-note">Confiance du modèle projeté (score + temps restant) — pas de cote live comparée</div><span class="top-pick-badge">${icon} ${pct}%</span></div></div>`;
+}
+
 function confidenceBarHTML(v) {
   const pct=Math.round(v*100),color=pct>=65?"#1a6b3a":pct>=50?"#b08900":"#9b2c2c";
   return `<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><div style="flex:1;height:5px;background:#e8ecf4;border-radius:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div></div><span style="font-size:12px;font-weight:800;color:${color};min-width:36px;text-align:right">${pct}%</span></div>`;
@@ -374,8 +394,11 @@ async function showPredictions(fixture,container,btn) {
         extraRows=[{label:'Plus de 2.5 but (total)',p:pO25}];
         html+=`<div class="no-odds" style="padding:8px 0;text-align:left;">⚠️ Cotes 1xBet indisponibles : estimation basée sur le score/temps uniquement.</div>`;
       }
+      const all1X2 = [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}];
+      const topPick = [...all1X2,...extraRows].reduce((best,r)=>r.p>best.p?r:best, all1X2[0]);
+      html+=renderTopPickLive(topPick.label, topPick.p);
       html+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin-bottom:6px;">📊 Probabilités en temps réel</div>`;
-      [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}].sort((a,b)=>b.p-a.p).forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+      all1X2.sort((a,b)=>b.p-a.p).forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
       extraRows.forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
     } else {
       html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
@@ -389,8 +412,12 @@ async function showPredictions(fixture,container,btn) {
         if(valueBets.length===0){
           html+=`<div class="no-odds">✅ Aucun value bet détecté.<br>Les cotes semblent correctement évaluées.</div>`;
         } else {
-          html+=`<div style="font-size:11px;color:#8a9ab8;margin-bottom:10px;">${valueBets.length} opportunité${valueBets.length>1?'s':''} · Trié par avantage</div>`;
-          html+=valueBets.map(renderValueBet).join("");
+          html+=renderTopPick(valueBets[0]);
+          const rest=valueBets.slice(1);
+          if(rest.length>0){
+            html+=`<div style="font-size:11px;color:#8a9ab8;margin:4px 0 10px;">${rest.length} autre${rest.length>1?'s':''} opportunité${rest.length>1?'s':''} · Trié par avantage</div>`;
+            html+=rest.map(renderValueBet).join("");
+          }
         }
         html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:12px 0 6px;padding-top:10px;border-top:1px dashed #e0e4ee;text-transform:uppercase;letter-spacing:0.5px;">Probabilités du modèle</div>`;
         [{label:`Victoire ${home.name}`,p:modelProbs.pH},{label:'Match nul',p:modelProbs.pD},{label:`Victoire ${away.name}`,p:modelProbs.pA},{label:'BTTS Oui',p:modelProbs.pBTTS},{label:'Over 2.5',p:modelProbs.pO25}].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
