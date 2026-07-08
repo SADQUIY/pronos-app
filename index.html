@@ -138,9 +138,38 @@
 const API_BASE = "https://Sadquiy35--2a7ef21a6f6f11f1a7161607ee4eb77e.web.val.run";
 const BOOKMAKER_1XBET = 8;
 let allFixtures = [], currentTab = "upcoming";
-const fixtureOddsCache = {}; // fixture.id -> {lh, la, parsed} | null (null = no odds found, cached to avoid refetch)
+const fixtureOddsCache = {}; // fixture.id -> {lh, la, parsed, source} | null (null = no odds found, cached to avoid refetch)
 const matchUIState = {};     // fixture.id -> {expanded, html, btnLabel, btnClass}
 const leagueOpenState = {};  // league.id -> true/false
+const teamFormCache = {};    // team.id -> {avgScored, avgConceded, matches} | null
+
+// Forme récente d'une équipe : moyenne buts marqués/encaissés sur ses ~8 derniers matchs joués
+// (toutes compétitions confondues). Sert à affiner les lambdas quand les cotes sont absentes ou
+// pour corriger un décalage entre la cote et une forme très récente (blessure, série...).
+async function getTeamRecentForm(teamId) {
+  if (Object.prototype.hasOwnProperty.call(teamFormCache, teamId)) return teamFormCache[teamId];
+  let data=null;
+  try {
+    data = await apiGet(`/fixtures?team=${teamId}&last=8`);
+  } catch(e) {
+    console.warn(`[pronos] Forme récente indisponible pour l'équipe ${teamId}:`, e.message);
+    teamFormCache[teamId]=null;
+    return null;
+  }
+  if(!data || data.length===0){ teamFormCache[teamId]=null; return null; }
+  let scored=0, conceded=0, n=0;
+  data.forEach(f=>{
+    if(f.goals.home===null||f.goals.away===null) return; // match pas encore joué/terminé
+    const isHome = f.teams.home.id===teamId;
+    scored += isHome?f.goals.home:f.goals.away;
+    conceded += isHome?f.goals.away:f.goals.home;
+    n++;
+  });
+  if(n===0){ teamFormCache[teamId]=null; return null; }
+  const result={avgScored:scored/n, avgConceded:conceded/n, matches:n};
+  teamFormCache[teamId]=result;
+  return result;
+}
 
 // --- Journal technique mobile : capture les console.warn/error pour les afficher dans un panneau,
 // puisqu'on ne peut pas ouvrir la console développeur sur téléphone.
@@ -375,16 +404,41 @@ async function getCalibratedModel(fixture) {
     console.warn(`[pronos] Cotes 1xBet indisponibles pour fixture ${fid} (${home.name} vs ${away.name}):`, e.message);
   }
   const parsed = parseOdds1xbet(oddsData, home.name, away.name);
-  if (!parsed || !parsed.home1x2) {
-    fixtureOddsCache[fid] = null;
-    return null;
+  const [homeForm, awayForm] = await Promise.all([getTeamRecentForm(home.id), getTeamRecentForm(away.id)]);
+  const hasForm = homeForm && awayForm;
+
+  if (parsed && parsed.home1x2) {
+    // Cas idéal : cotes 1xBet disponibles. On calibre dessus, puis on mélange légèrement avec la
+    // forme récente (70% cotes / 30% forme) pour capter un changement de forme que la cote n'a pas
+    // encore totalement intégré (petite série, blessure...), sans pour autant s'en écarter trop.
+    const rawH=oddsToProb(parsed.home1x2), rawD=oddsToProb(parsed.draw1x2||2), rawA=oddsToProb(parsed.away1x2);
+    const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
+    const {lh:oddsLh,la:oddsLa}=estimateLambdas(nH,nD,nA);
+    let lh=oddsLh, la=oddsLa, source='odds';
+    if (hasForm) {
+      const formLh=(homeForm.avgScored+awayForm.avgConceded)/2;
+      const formLa=(awayForm.avgScored+homeForm.avgConceded)/2;
+      lh=oddsLh*0.7+formLh*0.3; la=oddsLa*0.7+formLa*0.3;
+      source='odds+form';
+    }
+    const result={lh,la,parsed,source};
+    fixtureOddsCache[fid]=result;
+    return result;
   }
-  const rawH=oddsToProb(parsed.home1x2), rawD=oddsToProb(parsed.draw1x2||2), rawA=oddsToProb(parsed.away1x2);
-  const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
-  const {lh,la}=estimateLambdas(nH,nD,nA);
-  const result = {lh, la, parsed};
-  fixtureOddsCache[fid] = result;
-  return result;
+
+  if (hasForm) {
+    // Pas de cotes 1xBet, mais on a l'historique des 2 équipes : on estime les lambdas directement
+    // à partir de leur attaque/défense récente (méthode standard : moyenne attaque domicile x défense
+    // adverse). Nettement plus fiable que l'ancienne heuristique score/temps pour ces matchs.
+    const lh=(homeForm.avgScored+awayForm.avgConceded)/2;
+    const la=(awayForm.avgScored+homeForm.avgConceded)/2;
+    const result={lh,la,parsed:null,source:'form'};
+    fixtureOddsCache[fid]=result;
+    return result;
+  }
+
+  fixtureOddsCache[fid] = null;
+  return null;
 }
 
 function computeRemainingMarketProbs(hG, aG, lhRem, laRem) {
@@ -481,7 +535,9 @@ async function showPredictions(fixture,container,btn) {
       const cal = await getCalibratedModel(fixture);
       let pH,pD,pA,extraRows=[],liveValueBets=null;
       if (cal) {
-        // Ancré sur le modèle Poisson pré-match (calibré sur les cotes 1xBet) :
+        if(cal.source==='form') html+=`<div class="no-odds" style="padding:4px 0 8px;text-align:left;">📈 Cotes 1xBet indisponibles : modèle basé sur la forme récente des 2 équipes.</div>`;
+        else if(cal.source==='odds+form') html+=`<div class="no-odds" style="padding:4px 0 8px;text-align:left;">🎯 Modèle basé sur les cotes 1xBet, affiné avec la forme récente.</div>`;
+        // Ancré sur le modèle Poisson pré-match (calibré sur les cotes 1xBet et/ou la forme récente) :
         // on simule uniquement les buts du temps restant, puis on les ajoute au score actuel.
         const frac = remaining/90;
         const dom = ls ? (ls.hP-50)/100 : 0;
@@ -536,11 +592,20 @@ async function showPredictions(fixture,container,btn) {
         const priorRatePerMin=2.6/90, priorMinutes=20;
         const effectiveRate=(paceGoals+priorRatePerMin*priorMinutes)/(elapsed+priorMinutes);
         const lambdaRemaining=effectiveRate*remaining;
-        const goalsNeeded=Math.max(0,3-tG); // buts restants nécessaires pour dépasser 2.5 au total (basé sur le VRAI score)
-        let pUnderRemaining=0;
-        for(let k=0;k<goalsNeeded;k++) pUnderRemaining+=poissonProb(lambdaRemaining,k);
-        let pO25=tG>2?1:Math.max(0.05,Math.min(0.95,1-pUnderRemaining));
-        extraRows=[{label:'Plus de 2.5 but (total)',p:pO25}];
+        function pOverLine(line){
+          const goalsNeeded=Math.max(0,Math.floor(line)+1-tG); // buts restants nécessaires pour dépasser cette ligne
+          if(tG>line) return 1; // déjà dépassée par le score actuel : ce n'est plus une prédiction, c'est un fait
+          let pUnder=0;
+          for(let k=0;k<goalsNeeded;k++) pUnder+=poissonProb(lambdaRemaining,k);
+          return Math.max(0.05,Math.min(0.95,1-pUnder));
+        }
+        const isOpenOU = p => p>0.04 && p<0.96;
+        const ouCandidates=[1.5,2.5,3.5,4.5].map(line=>({label:`Plus de ${line} but (total)`,p:pOverLine(line)})).filter(r=>isOpenOU(r.p));
+        // On garde la ligne la plus informative (la plus proche de 50%) ; si toutes les lignes sont déjà
+        // décidées par le score actuel (ex: 2-2 rend "+2.5" trivialement vrai), on ne montre plus ça
+        // comme un "pari" puisque ce n'est plus une prédiction.
+        ouCandidates.sort((a,b)=>Math.abs(a.p-0.5)-Math.abs(b.p-0.5));
+        extraRows=ouCandidates.slice(0,2);
         html+=`<div class="no-odds" style="padding:8px 0;text-align:left;">⚠️ Cotes 1xBet indisponibles : estimation basée sur le score/temps${ls?' + statistiques live':''} uniquement.</div>`;
         if(!ls){
           // Ni cotes, ni stats : la fiabilité est nettement plus faible. On le dit clairement plutôt
@@ -549,8 +614,7 @@ async function showPredictions(fixture,container,btn) {
           html+=`<div class="no-odds" style="padding:4px 0 8px;text-align:left;color:#9b2c2c;">📉 Aucune statistique live disponible non plus pour ce match : fiabilité réduite, à prendre avec prudence.</div>`;
           pH=Math.max(0.12,Math.min(0.80,pH));pD=Math.max(0.12,Math.min(0.50,pD));pA=Math.max(0.12,Math.min(0.80,pA));
           const sR2=pH+pD+pA;pH/=sR2;pD/=sR2;pA/=sR2;
-          pO25=Math.max(0.10,Math.min(0.85,pO25));
-          extraRows=[{label:'Plus de 2.5 but (total)',p:pO25}];
+          extraRows=extraRows.map(r=>({label:r.label,p:Math.max(0.10,Math.min(0.85,r.p))}));
         }
       }
       const all1X2 = [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}];
@@ -569,11 +633,20 @@ async function showPredictions(fixture,container,btn) {
       all1X2.sort((a,b)=>b.p-a.p).forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
       extraRows.forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
     } else {
-      html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
       const cal = await getCalibratedModel(fixture);
       if(!cal){
-        html+=`<div class="no-odds">⚠️ Cotes 1xBet non disponibles pour ce match.</div>`;
+        html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
+        html+=`<div class="no-odds">⚠️ Cotes 1xBet non disponibles, et historique récent introuvable pour ce match.</div>`;
+      } else if (cal.source==='form') {
+        // Pas de cotes 1xBet pour ce match : on n'a rien à comparer, donc pas de "value bet" possible,
+        // mais on peut quand même donner des probabilités basées sur la forme récente des 2 équipes
+        // (nettement plus fiable que la simple heuristique score/temps).
+        html=`<div class="odds-header">📊 Estimation (forme récente)</div>`;
+        html+=`<div class="no-odds" style="padding:6px 0 14px;">⚠️ Cotes 1xBet indisponibles pour ce match : estimation basée sur les derniers matchs de chaque équipe (pas de comparaison à une cote possible).</div>`;
+        const modelProbs=computeModelProbabilities(cal.lh,cal.la);
+        [{label:`Victoire ${home.name}`,p:modelProbs.pH},{label:'Match nul',p:modelProbs.pD},{label:`Victoire ${away.name}`,p:modelProbs.pA},{label:'BTTS Oui',p:modelProbs.pBTTS},{label:'Over 2.5',p:modelProbs.pO25}].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
       } else {
+        html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
         const {lh,la,parsed}=cal;
         const modelProbs=computeModelProbabilities(lh,la);
         const valueBets=findValueBets(modelProbs,parsed,home.name,away.name);
@@ -587,7 +660,7 @@ async function showPredictions(fixture,container,btn) {
             html+=rest.map(renderValueBet).join("");
           }
         }
-        html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:12px 0 6px;padding-top:10px;border-top:1px dashed #e0e4ee;text-transform:uppercase;letter-spacing:0.5px;">Probabilités du modèle</div>`;
+        html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:12px 0 6px;padding-top:10px;border-top:1px dashed #e0e4ee;text-transform:uppercase;letter-spacing:0.5px;">Probabilités du modèle${cal.source==='odds+form'?' (cotes + forme récente)':''}</div>`;
         [{label:`Victoire ${home.name}`,p:modelProbs.pH},{label:'Match nul',p:modelProbs.pD},{label:`Victoire ${away.name}`,p:modelProbs.pA},{label:'BTTS Oui',p:modelProbs.pBTTS},{label:'Over 2.5',p:modelProbs.pO25}].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
       }
       container.dataset.loaded="true";
