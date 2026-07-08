@@ -98,6 +98,7 @@
   .debug-log-entry { border-bottom: 1px solid #e5e5e5; padding: 7px 0; white-space: pre-wrap; }
   .debug-log-entry:last-child { border-bottom: none; }
   .debug-log-entry.err { color: #9b2c2c; }
+  .debug-log-entry.best { color: #1a6b3a; font-weight: 800; }
   .debug-empty { color: #999; text-align: center; padding: 24px 0; font-size: 12px; }
 </style>
 </head>
@@ -131,6 +132,11 @@
         <button class="debug-panel-btn close" onclick="toggleDebugPanel()">Fermer</button>
       </div>
     </div>
+    <div class="debug-panel-header" style="margin-top:2px;">
+      <span class="debug-panel-title" style="font-size:13px;">📊 Fiabilité cotes vs forme</span>
+      <button class="debug-panel-btn copy" onclick="refreshTrackerPanel()">Vérifier les résultats</button>
+    </div>
+    <div id="trackerPanel" class="debug-log-list" style="max-height:180px;margin-bottom:12px;"><div class="debug-empty">Chargement...</div></div>
     <div id="debugLogList" class="debug-log-list"><div class="debug-empty">Aucun message pour l'instant. Ouvre un match (surtout en direct) et appuie sur "Analyser" : si quelque chose ne va pas, ça s'affichera ici.</div></div>
   </div>
 </div>
@@ -204,7 +210,7 @@ function renderDebugLog(){
 function toggleDebugPanel(){
   const panel=document.getElementById('debugPanel'); if(!panel) return;
   panel.classList.toggle('open');
-  if(panel.classList.contains('open')){ renderDebugLog(); debugUnread=0; updateDebugBadge(); }
+  if(panel.classList.contains('open')){ renderDebugLog(); debugUnread=0; updateDebugBadge(); renderTrackerPanel(); }
 }
 function clearDebugLog(){ debugLog=[]; renderDebugLog(); }
 async function copyDebugLog(){
@@ -393,6 +399,85 @@ function confidenceBarHTML(v) {
   return `<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><div style="flex:1;height:5px;background:#e8ecf4;border-radius:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div></div><span style="font-size:12px;font-weight:800;color:${color};min-width:36px;text-align:right">${pct}%</span></div>`;
 }
 
+// --- Suivi prospectif des prédictions : on ne peut pas backtester sur des mois de données passées
+// (API-Football ne garde les cotes que 7 jours après le coup d'envoi), donc on enregistre chaque
+// prédiction dès maintenant (cotes ET forme séparément) et on la compare au résultat réel une fois
+// le match terminé, pour savoir empiriquement quel ratio cotes/forme est le plus fiable.
+const TRACKER_KEY='pronosTracker_v1';
+const RATIO_CANDIDATES=[1.0,0.85,0.7,0.5,0.3,0.15,0.0]; // poids sur les cotes (reste = poids sur la forme)
+function loadTracker(){ try{ return JSON.parse(localStorage.getItem(TRACKER_KEY)||'[]'); }catch(e){ return []; } }
+function saveTracker(arr){ try{ localStorage.setItem(TRACKER_KEY, JSON.stringify(arr)); }catch(e){ console.warn('[pronos] Sauvegarde du suivi impossible:', e.message); } }
+function recordPrediction(fixture, oddsLh, oddsLa, formLh, formLa){
+  const tracker=loadTracker();
+  if(tracker.find(t=>t.fixtureId===fixture.fixture.id)) return; // déjà enregistré
+  tracker.push({
+    fixtureId: fixture.fixture.id,
+    homeName: fixture.teams.home.name, awayName: fixture.teams.away.name,
+    kickoff: fixture.fixture.date,
+    oddsLh, oddsLa, formLh, formLa,
+    resolved:false, actualResult:null
+  });
+  if(tracker.length>500) tracker.splice(0, tracker.length-500); // évite de saturer le stockage local
+  saveTracker(tracker);
+}
+async function evaluateTracker(){
+  const tracker=loadTracker();
+  const unresolved=tracker.filter(t=>!t.resolved);
+  let apiCalls=0;
+  for(const rec of unresolved){
+    if(apiCalls>=20) break; // on limite le nombre d'appels API par vérification
+    const kickoff=new Date(rec.kickoff);
+    if(Date.now()-kickoff.getTime()<2.5*3600*1000) continue; // match probablement pas encore fini
+    apiCalls++;
+    try{
+      const data=await apiGet(`/fixtures?id=${rec.fixtureId}`);
+      const f=data && data[0];
+      if(!f || f.goals.home===null || f.goals.away===null || !DONE_STATUSES.includes(f.fixture.status.short)) continue;
+      rec.actualResult = f.goals.home>f.goals.away?'H':f.goals.home===f.goals.away?'D':'A';
+      rec.resolved=true;
+    }catch(e){
+      console.warn(`[pronos] Vérification résultat impossible pour fixture ${rec.fixtureId}:`, e.message);
+    }
+  }
+  saveTracker(tracker);
+  return tracker;
+}
+function computeBrierByRatio(tracker){
+  const resolved=tracker.filter(t=>t.resolved);
+  return RATIO_CANDIDATES.map(w=>{
+    let sum=0, n=0;
+    resolved.forEach(rec=>{
+      const lh=rec.oddsLh*w+rec.formLh*(1-w), la=rec.oddsLa*w+rec.formLa*(1-w);
+      const mp=computeModelProbabilities(lh,la);
+      const actual={H:[1,0,0],D:[0,1,0],A:[0,0,1]}[rec.actualResult];
+      const pred=[mp.pH,mp.pD,mp.pA];
+      let brier=0; for(let i=0;i<3;i++) brier+=Math.pow(pred[i]-actual[i],2);
+      sum+=brier; n++;
+    });
+    return {weight:w, avgBrier:n>0?sum/n:null, n};
+  });
+}
+function renderTrackerPanel(){
+  const el=document.getElementById('trackerPanel'); if(!el) return;
+  const tracker=loadTracker();
+  const resolved=tracker.filter(t=>t.resolved);
+  if(resolved.length<5){
+    el.innerHTML=`<div class="debug-empty">Échantillon encore trop faible (${resolved.length} match${resolved.length>1?'s':''} résolu${resolved.length>1?'s':''} sur ${tracker.length} suivi${tracker.length>1?'s':''}). Continue à analyser des matchs en avant-match, puis reviens vérifier plus tard.</div>`;
+    return;
+  }
+  const scores=computeBrierByRatio(tracker);
+  const valid=scores.filter(s=>s.avgBrier!==null);
+  const best=valid.reduce((b,s)=>s.avgBrier<b.avgBrier?s:b, valid[0]);
+  el.innerHTML=`<div style="font-size:11px;color:#8a9ab8;margin-bottom:8px;">${resolved.length} match${resolved.length>1?'s':''} résolu${resolved.length>1?'s':''} sur ${tracker.length} suivi${tracker.length>1?'s':''} · score de Brier, plus bas = meilleur</div>`+
+    scores.map(s=>`<div class="debug-log-entry${s.weight===best.weight?' best':''}">Cotes ${Math.round(s.weight*100)}% / Forme ${Math.round((1-s.weight)*100)}% → Brier ${s.avgBrier!==null?s.avgBrier.toFixed(4):'—'} (n=${s.n})</div>`).join('');
+}
+async function refreshTrackerPanel(){
+  const el=document.getElementById('trackerPanel');
+  if(el) el.innerHTML='<div class="debug-empty">Vérification des résultats en cours...</div>';
+  await evaluateTracker();
+  renderTrackerPanel();
+}
+
 async function getCalibratedModel(fixture) {
   const fid = fixture.fixture.id;
   if (Object.prototype.hasOwnProperty.call(fixtureOddsCache, fid)) return fixtureOddsCache[fid];
@@ -418,6 +503,7 @@ async function getCalibratedModel(fixture) {
     if (hasForm) {
       const formLh=(homeForm.avgScored+awayForm.avgConceded)/2;
       const formLa=(awayForm.avgScored+homeForm.avgConceded)/2;
+      recordPrediction(fixture, oddsLh, oddsLa, formLh, formLa);
       lh=oddsLh*0.7+formLh*0.3; la=oddsLa*0.7+formLa*0.3;
       source='odds+form';
     }
