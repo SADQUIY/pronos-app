@@ -411,7 +411,7 @@ async function getLiveOdds1xbet(fixture) {
   const home=fixture.teams.home, away=fixture.teams.away;
   let data=null;
   try {
-    data = await apiGet(`/odds/live?fixture=${fid}&bookmaker=${BOOKMAKER_1XBET}`);
+    data = await apiGet(`/odds/live?fixture=${fid}`);
   } catch(e) {
     console.warn(`[pronos] /odds/live indisponible pour fixture ${fid} (${home.name} vs ${away.name}):`, e.message);
     return null;
@@ -522,10 +522,36 @@ async function showPredictions(fixture,container,btn) {
         else if(remaining<=45){pH=sd>0?0.58:sd<0?0.22:0.33+dom*0.15;pD=sd===0?0.38:0.20;pA=sd<0?0.58:sd>0?0.22:0.29-dom*0.15;}
         else{pH=sd>0?0.48:sd<0?0.28:0.35+dom*0.1;pD=sd===0?0.30:0.22;pA=sd<0?0.48:sd>0?0.28:0.32-dom*0.1;}
         const sR=pH+pD+pA;pH/=sR;pD/=sR;pA/=sR;
-        const tG=hG+aG,gr=elapsed>0?tG/elapsed:0,proj=tG+gr*remaining;
-        const pO25=tG>=3?1:Math.max(0.05,Math.min(0.95,(proj-2.5)/2+0.5));
+        // Avant, le taux de but observé (souvent instable en tout début de match) était extrapolé
+        // linéairement sur tout le temps restant, ce qui donnait des projections absurdes (ex: 1 but
+        // à la 11e minute → 8 buts projetés sur 90 min). On mélange maintenant ce taux avec une
+        // moyenne de référence (2.6 buts/match), pondérée par un "temps équivalent" de 20 minutes,
+        // puis on calcule une vraie probabilité Poisson sur les buts restants au lieu d'une règle de trois.
+        const tG=hG+aG;
+        // Quand les stats live existent, le volume de tirs cadrés est un signal plus stable que le
+        // nombre de buts déjà marqués (le but est un évènement rare et bruité, surtout tôt dans le match) :
+        // on estime un "rythme d'attaque" à partir des tirs, et on prend le plus informatif des deux.
+        const xgSoFar = ls ? (ls.hShOn*0.3 + ls.aShOn*0.3 + Math.max(0,ls.hSh-ls.hShOn)*0.04 + Math.max(0,ls.aSh-ls.aShOn)*0.04) : tG;
+        const paceGoals = ls ? Math.max(tG, xgSoFar) : tG;
+        const priorRatePerMin=2.6/90, priorMinutes=20;
+        const effectiveRate=(paceGoals+priorRatePerMin*priorMinutes)/(elapsed+priorMinutes);
+        const lambdaRemaining=effectiveRate*remaining;
+        const goalsNeeded=Math.max(0,3-tG); // buts restants nécessaires pour dépasser 2.5 au total (basé sur le VRAI score)
+        let pUnderRemaining=0;
+        for(let k=0;k<goalsNeeded;k++) pUnderRemaining+=poissonProb(lambdaRemaining,k);
+        let pO25=tG>2?1:Math.max(0.05,Math.min(0.95,1-pUnderRemaining));
         extraRows=[{label:'Plus de 2.5 but (total)',p:pO25}];
-        html+=`<div class="no-odds" style="padding:8px 0;text-align:left;">⚠️ Cotes 1xBet indisponibles : estimation basée sur le score/temps uniquement.</div>`;
+        html+=`<div class="no-odds" style="padding:8px 0;text-align:left;">⚠️ Cotes 1xBet indisponibles : estimation basée sur le score/temps${ls?' + statistiques live':''} uniquement.</div>`;
+        if(!ls){
+          // Ni cotes, ni stats : la fiabilité est nettement plus faible. On le dit clairement plutôt
+          // que d'afficher un pourcentage avec une fausse impression de précision, et on resserre
+          // l'intervalle affiché pour ne pas paraître trop catégorique.
+          html+=`<div class="no-odds" style="padding:4px 0 8px;text-align:left;color:#9b2c2c;">📉 Aucune statistique live disponible non plus pour ce match : fiabilité réduite, à prendre avec prudence.</div>`;
+          pH=Math.max(0.12,Math.min(0.80,pH));pD=Math.max(0.12,Math.min(0.50,pD));pA=Math.max(0.12,Math.min(0.80,pA));
+          const sR2=pH+pD+pA;pH/=sR2;pD/=sR2;pA/=sR2;
+          pO25=Math.max(0.10,Math.min(0.85,pO25));
+          extraRows=[{label:'Plus de 2.5 but (total)',p:pO25}];
+        }
       }
       const all1X2 = [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}];
       if (liveValueBets && liveValueBets.length>0) {
