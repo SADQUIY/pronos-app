@@ -528,18 +528,18 @@ async function getCalibratedModel(fixture) {
 }
 
 function computeRemainingMarketProbs(hG, aG, lhRem, laRem) {
-  const M = buildScoreMatrix(lhRem, laRem, 6);
-  let pH=0,pD=0,pA=0,pO05=0,pO15=0,pO25=0,pO35=0,pBTTS=0,pWTNH=0,pWTNA=0,pHomeScores=0,pAwayScores=0;
-  for(let i=0;i<=6;i++) for(let j=0;j<=6;j++){
+  const M = buildScoreMatrix(lhRem, laRem, 8);
+  let pH=0,pD=0,pA=0,pO05=0,pO15=0,pO25=0,pO35=0,pO45=0,pO55=0,pBTTS=0,pWTNH=0,pWTNA=0,pHomeScores=0,pAwayScores=0;
+  for(let i=0;i<=8;i++) for(let j=0;j<=8;j++){
     const p=M[i][j], fh=hG+i, fa=aG+j, tot=fh+fa;
     if(fh>fa)pH+=p; else if(fh===fa)pD+=p; else pA+=p;
-    if(tot>0)pO05+=p; if(tot>1)pO15+=p; if(tot>2)pO25+=p; if(tot>3)pO35+=p;
+    if(tot>0)pO05+=p; if(tot>1)pO15+=p; if(tot>2)pO25+=p; if(tot>3)pO35+=p; if(tot>4)pO45+=p; if(tot>5)pO55+=p;
     if(fh>0&&fa>0)pBTTS+=p;
     if(fh>0)pHomeScores+=p; if(fa>0)pAwayScores+=p;
     if(fh>fa&&fa===0)pWTNH+=p;
     if(fa>fh&&fh===0)pWTNA+=p;
   }
-  return {pH,pD,pA,pO05,pO15,pO25,pO35,pBTTS,pWTNH,pWTNA,pHomeScores,pAwayScores};
+  return {pH,pD,pA,pO05,pO15,pO25,pO35,pO45,pO55,pBTTS,pWTNH,pWTNA,pHomeScores,pAwayScores};
 }
 
 // Cotes live 1xBet (endpoint /odds/live, distinct du /odds pré-match).
@@ -643,6 +643,8 @@ async function showPredictions(fixture,container,btn) {
           {label:'Plus de 1.5 but (total)',p:mp.pO15},
           {label:'Plus de 2.5 but (total)',p:mp.pO25},
           {label:'Plus de 3.5 but (total)',p:mp.pO35},
+          {label:'Plus de 4.5 but (total)',p:mp.pO45},
+          {label:'Plus de 5.5 but (total)',p:mp.pO55},
           {label:'Les deux équipes marquent',p:mp.pBTTS},
           {label:`${home.name} marque encore`,p:mp.pHomeScores},
           {label:`${away.name} marque encore`,p:mp.pAwayScores},
@@ -652,10 +654,8 @@ async function showPredictions(fixture,container,btn) {
         // Priorité aux marchés les plus incertains (proches de 50%), qui sont les plus utiles à suivre en live
         candidates.sort((a,b)=>Math.abs(a.p-0.5)-Math.abs(b.p-0.5));
         extraRows = candidates.slice(0,4);
-        if(extraRows.length===0){
-          // Tous les marchés annexes sont déjà décidés par le score actuel (ex: BTTS déjà validé, Over déjà atteint...)
-          extraRows=[{label:'Plus de 2.5 but (total)',p:mp.pO25}];
-        }
+        // Si tout est déjà décidé par le score actuel (gros score, fin de match...), on ne force plus
+        // l'affichage d'un marché déjà résolu : le 1X2 reste seul, c'est plus honnête.
       } else {
         // Repli si les cotes 1xBet ne sont pas disponibles : heuristique basée sur score/temps/possession
         const sd=hG-aG, dom = ls?(ls.hP-50)/100:0;
