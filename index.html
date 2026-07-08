@@ -164,7 +164,7 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
   const hG=isLiveMatch?currentHomeGoals:0, aG=isLiveMatch?currentAwayGoals:0, tG=hG+aG;
   const remaining=isLiveMatch?Math.max(0,90-elapsedMin):90;
   const fracRemaining=remaining/90;
-  const is1H=isLiveMatch&&elapsedMin>0&&elapsedMin<=45;
+  const is1H=isLiveMatch&&elapsedMin>0&&elapsedMin<45;
   const is2H=isLiveMatch&&elapsedMin>45;
   const isHT=isLiveMatch&&elapsedMin===45;
   const htResult=(is2H||isHT)?(hG>aG?'1':hG<aG?'2':'X'):null;
@@ -242,7 +242,7 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
     const htLabel=htResult==='1'?homeName:htResult==='2'?awayName:'Nul';
     const ftOpts=[{label:`${htLabel}/${homeName}`,conf:pH},{label:`${htLabel}/Nul`,conf:pD},{label:`${htLabel}/${awayName}`,conf:pA}].sort((a,b)=>b.conf-a.conf);
     pushPick('Mi-temps / Final (HT-FT)',ftOpts[0].label,ftOpts[0].conf);
-  } else if(!is1H){
+  } else if(!is1H&&!isHT){
     const htftMap={};
     for(let i=0;i<=MAX;i++) for(let j=0;j<=MAX;j++){
       const ph=M1[i][j];if(!ph)continue;const htR=i>j?'1':i===j?'X':'2';
@@ -301,13 +301,14 @@ function computeExtendedMarkets(homeForm,awayForm,pH,pD,pA,pBTTS,pOver25,homeNam
     for(let i=0;i<=MAX;i++)for(let j=0;j<=MAX;j++){if(i+j>0)p1O05+=M1[i][j];if(i+j>1)p1O15+=M1[i][j];}
     push('Total 1ère MT Over 0.5',p1O05);
     push('Total 1ère MT Over 1.5',p1O15);
+  } else if(is2H||isHT){
+    // 1ère MT terminée — score réel connu
+    push('Total 1ère MT Over 0.5',tG>0?1:0);
+    push('Total 1ère MT Over 1.5',tG>1?1:0);
   } else if(is1H){
     const remFH=Math.max(0,45-elapsedMin), lFHR=(lh90+la90)*FH*(remFH/45);
     push('Total 1ère MT Over 0.5',tG>0?1:1-pmf(lFHR,0));
     push('Total 1ère MT Over 1.5',tG>1?1:tG===1?1-pmf(lFHR,0):1-pmf(lFHR,0)-pmf(lFHR,1));
-  } else if(is2H){
-    push('Total 1ère MT Over 0.5',tG>0?1:0.05);
-    push('Total 1ère MT Over 1.5',tG>1?1:tG===1?0.45:0.05);
   }
 
   // 10. TOTAUX 2ÈME MI-TEMPS
@@ -432,7 +433,7 @@ async function showPredictions(fixture,container,btn) {
       if(ls)sn=`<div class="stats-box">📊 <b>${home.name}</b>: ${ls.hP}% possession · ${ls.hSh} tirs (${ls.hShOn} cadrés) · ${ls.hC} corners<br>📊 <b>${away.name}</b>: ${ls.aP}% possession · ${ls.aSh} tirs (${ls.aShOn} cadrés) · ${ls.aC} corners</div>`;
       html=`<div class="live-header-note">🔴 ANALYSE EN TEMPS RÉEL — ${fixture.fixture.status.elapsed}' | Score: ${fixture.goals.home}-${fixture.goals.away}</div>`;
       html+=sn;
-      const CONCLUDED=['gagne sans encaisser','0-0','aucun but','les deux équipes marquent dans chaque mi-temps','nul dans les deux mi-temps','gagne les deux mi-temps','total buts over 0.5','total buts over 1.5','les deux équipes marquent (btts)'];
+      const CONCLUDED=['gagne sans encaisser','0-0','aucun but','les deux équipes marquent dans chaque mi-temps','nul dans les deux mi-temps','gagne les deux mi-temps','total buts over 0.5','total buts over 1.5','les deux équipes marquent (btts)','total 1ère mt over 0.5','total 1ère mt over 1.5'];
       function isConcluded(m){if(m.confidence<0.97)return false;return CONCLUDED.some(kw=>m.type.toLowerCase().includes(kw));}
       const allLive=computeExtendedMarkets(nf,nf,pH,pD,pA,pBTTSL,pOver25L,home.name,away.name,hG,aG,elapsed)
         .filter(p=>!isConcluded(p))
@@ -482,13 +483,13 @@ function renderMatch(fixture) {
   const kickoff=new Date(fixture.fixture.date);
   const timeStr=kickoff.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
   const elapsed=fixture.fixture.status.elapsed;
-  let tb;
-  if(isLive(fixture))tb=`<span class="badge-live">${elapsed?elapsed+"'":"Live"}</span>`;
-  else if(isFinished(fixture)){const sc=fixture.goals.home!==null?`${fixture.goals.home}-${fixture.goals.away}`:"FT";tb=`<span class="badge-done">✅ ${sc}</span>`;}
-  else tb=`<span class="time">${timeStr}</span>`;
-  const ss=(isLive(fixture)||isFinished(fixture))&&fixture.goals.home!==null;
+  let timeBadge;
+  if(isLive(fixture))timeBadge=`<span class="badge-live">${elapsed?elapsed+"'":"Live"}</span>`;
+  else if(isFinished(fixture)){const sc=fixture.goals.home!==null?`${fixture.goals.home}-${fixture.goals.away}`:"FT";timeBadge=`<span class="badge-done">✅ ${sc}</span>`;}
+  else timeBadge=`<span class="time">${timeStr}</span>`;
+  const showScore=(isLive(fixture)||isFinished(fixture))&&fixture.goals.home!==null;
   const card=document.createElement("div");card.className="card";
-  card.innerHTML=`<div class="card-top"><span class="card-round">${fixture.league.round||""}</span>${tb}</div><div class="teams-row"><div class="team-block"><img class="team-logo" src="${home.logo}" alt=""/><span class="team-name">${home.name}</span></div><div class="score-block">${ss?`<span class="score">${fixture.goals.home}</span><span class="score-sep">-</span><span class="score">${fixture.goals.away}</span>`:`<span class="vs-text">VS</span>`}</div><div class="team-block away"><img class="team-logo" src="${away.logo}" alt=""/><span class="team-name">${away.name}</span></div></div><button class="pred-btn${isLive(fixture)?" live-btn":""}">👁 Voir les pronostics</button><div class="predictions" style="display:none"></div>`;
+  card.innerHTML=`<div class="card-top"><span class="card-round">${fixture.league.round||""}</span>${timeBadge}</div><div class="teams-row"><div class="team-block"><img class="team-logo" src="${home.logo}" alt=""/><span class="team-name">${home.name}</span></div><div class="score-block">${showScore?`<span class="score">${fixture.goals.home}</span><span class="score-sep">-</span><span class="score">${fixture.goals.away}</span>`:`<span class="vs-text">VS</span>`}</div><div class="team-block away"><img class="team-logo" src="${away.logo}" alt=""/><span class="team-name">${away.name}</span></div></div><button class="pred-btn${isLive(fixture)?" live-btn":""}">👁 Voir les pronostics</button><div class="predictions" style="display:none"></div>`;
   const btn=card.querySelector(".pred-btn"),pc=card.querySelector(".predictions");
   btn.addEventListener("click",()=>showPredictions(fixture,pc,btn));
   return card;
@@ -515,7 +516,7 @@ function renderTab(fixtures) {
     g.fixtures.sort((a,b)=>{const pa=isLive(a)?0:isUpcoming(a)?1:2,pb=isLive(b)?0:isUpcoming(b)?1:2;if(pa!==pb)return pa-pb;return new Date(a.fixture.date)-new Date(b.fixture.date);});
     ml.appendChild(renderLeagueGroup(g.name,g.country,g.fixtures,hl));
   });
-  fn.innerHTML="Pronostics : stats de saison + forme pondérée + modèle Poisson.";
+  fn.innerHTML="Pronostics basés sur stats de saison + forme pondérée. Outil d'aide à la réflexion.";
   fn.className="footer-note";
 }
 
