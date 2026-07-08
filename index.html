@@ -82,6 +82,23 @@
   .empty-tab { text-align: center; margin-top: 60px; color: #8a9ab8; font-size: 14px; }
   .spin { animation: spin 1s linear infinite; display: inline-block; }
   @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  .debug-fab { position: fixed; bottom: 16px; right: 16px; z-index: 200; background: #1a1a2e; color: #fff; border: none; border-radius: 24px; padding: 10px 16px; font-size: 12px; font-weight: 700; box-shadow: 0 2px 10px rgba(0,0,0,0.35); cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .debug-fab .debug-badge { background: #e63946; border-radius: 10px; padding: 1px 6px; font-size: 10px; min-width: 14px; text-align: center; }
+  .debug-panel { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 300; display: none; align-items: flex-end; }
+  .debug-panel.open { display: flex; }
+  .debug-panel-content { background: #fff; width: 100%; max-height: 75vh; border-radius: 16px 16px 0 0; padding: 16px; display: flex; flex-direction: column; }
+  .debug-panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; flex-wrap: wrap; }
+  .debug-panel-title { font-weight: 800; font-size: 15px; }
+  .debug-panel-actions { display: flex; gap: 8px; }
+  .debug-panel-btn { font-size: 12px; font-weight: 700; padding: 7px 12px; border-radius: 8px; border: none; cursor: pointer; }
+  .debug-panel-btn.copy { background: #1a3a6b; color: #fff; }
+  .debug-panel-btn.clear { background: #eee; color: #333; }
+  .debug-panel-btn.close { background: #e63946; color: #fff; }
+  .debug-log-list { overflow-y: auto; flex: 1; font-family: monospace; font-size: 11px; line-height: 1.5; background: #f7f7f9; border-radius: 8px; padding: 10px; word-break: break-word; }
+  .debug-log-entry { border-bottom: 1px solid #e5e5e5; padding: 7px 0; white-space: pre-wrap; }
+  .debug-log-entry:last-child { border-bottom: none; }
+  .debug-log-entry.err { color: #9b2c2c; }
+  .debug-empty { color: #999; text-align: center; padding: 24px 0; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -103,6 +120,20 @@
   <div id="matchList"></div>
   <div id="footerNote"></div>
 </div>
+<button id="debugFab" class="debug-fab" onclick="toggleDebugPanel()">🐛 Debug <span class="debug-badge" id="debugBadge" style="display:none">0</span></button>
+<div id="debugPanel" class="debug-panel">
+  <div class="debug-panel-content">
+    <div class="debug-panel-header">
+      <span class="debug-panel-title">🐛 Journal technique</span>
+      <div class="debug-panel-actions">
+        <button class="debug-panel-btn copy" onclick="copyDebugLog()">Copier</button>
+        <button class="debug-panel-btn clear" onclick="clearDebugLog()">Vider</button>
+        <button class="debug-panel-btn close" onclick="toggleDebugPanel()">Fermer</button>
+      </div>
+    </div>
+    <div id="debugLogList" class="debug-log-list"><div class="debug-empty">Aucun message pour l'instant. Ouvre un match (surtout en direct) et appuie sur "Analyser" : si quelque chose ne va pas, ça s'affichera ici.</div></div>
+  </div>
+</div>
 <script>
 const API_BASE = "https://Sadquiy35--2a7ef21a6f6f11f1a7161607ee4eb77e.web.val.run";
 const BOOKMAKER_1XBET = 8;
@@ -110,6 +141,52 @@ let allFixtures = [], currentTab = "upcoming";
 const fixtureOddsCache = {}; // fixture.id -> {lh, la, parsed} | null (null = no odds found, cached to avoid refetch)
 const matchUIState = {};     // fixture.id -> {expanded, html, btnLabel, btnClass}
 const leagueOpenState = {};  // league.id -> true/false
+
+// --- Journal technique mobile : capture les console.warn/error pour les afficher dans un panneau,
+// puisqu'on ne peut pas ouvrir la console développeur sur téléphone.
+let debugLog = [];
+let debugUnread = 0;
+const _origWarn = console.warn.bind(console);
+const _origError = console.error.bind(console);
+function pushDebugLog(level, args) {
+  const msg = args.map(a=>{
+    if (typeof a === 'string') return a;
+    try { return JSON.stringify(a); } catch(e){ return String(a); }
+  }).join(' ');
+  const time = new Date().toLocaleTimeString('fr-FR');
+  debugLog.push({level, text:`[${time}] ${level.toUpperCase()}: ${msg}`});
+  if (debugLog.length > 100) debugLog.shift();
+  debugUnread++;
+  updateDebugBadge();
+  const panel = document.getElementById('debugPanel');
+  if (panel && panel.classList.contains('open')) renderDebugLog();
+}
+console.warn = function(...args){ pushDebugLog('warn', args); _origWarn(...args); };
+console.error = function(...args){ pushDebugLog('error', args); _origError(...args); };
+function updateDebugBadge(){
+  const b=document.getElementById('debugBadge'); if(!b) return;
+  if(debugUnread>0){ b.style.display='inline'; b.textContent=debugUnread>99?'99+':debugUnread; } else { b.style.display='none'; }
+}
+function renderDebugLog(){
+  const list=document.getElementById('debugLogList'); if(!list) return;
+  if(debugLog.length===0){ list.innerHTML='<div class="debug-empty">Aucun message pour l\'instant. Ouvre un match (surtout en direct) et appuie sur "Analyser" : si quelque chose ne va pas, ça s\'affichera ici.</div>'; return; }
+  list.innerHTML=debugLog.slice().reverse().map(l=>`<div class="debug-log-entry${l.level==='error'?' err':''}">${l.text.replace(/</g,'&lt;')}</div>`).join('');
+}
+function toggleDebugPanel(){
+  const panel=document.getElementById('debugPanel'); if(!panel) return;
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')){ renderDebugLog(); debugUnread=0; updateDebugBadge(); }
+}
+function clearDebugLog(){ debugLog=[]; renderDebugLog(); }
+async function copyDebugLog(){
+  const text=debugLog.map(l=>l.text).join('\n')||'(vide)';
+  try{
+    await navigator.clipboard.writeText(text);
+    alert('Journal copié ! Tu peux le coller dans le chat.');
+  }catch(e){
+    alert('Copie automatique impossible sur ce navigateur. Sélectionne le texte manuellement dans le panneau.');
+  }
+}
 
 function todayISO() {
   const d = new Date();
