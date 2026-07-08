@@ -325,6 +325,58 @@ function computeRemainingMarketProbs(hG, aG, lhRem, laRem) {
   return {pH,pD,pA,pO05,pO15,pO25,pO35,pBTTS,pWTNH,pWTNA,pHomeScores,pAwayScores};
 }
 
+// Cotes live 1xBet (endpoint /odds/live, distinct du /odds pré-match).
+// La structure exacte n'est pas garantie identique au pré-match : on tente de réutiliser le même
+// parseur (même schéma probable : bookmakers > bets > values), et on logue la réponse brute si ça échoue,
+// pour pouvoir ajuster le parseur si 1xBet/API-Football renvoie un format différent en live.
+async function getLiveOdds1xbet(fixture) {
+  const fid = fixture.fixture.id;
+  const home=fixture.teams.home, away=fixture.teams.away;
+  let data=null;
+  try {
+    data = await apiGet(`/odds/live?fixture=${fid}&bookmaker=${BOOKMAKER_1XBET}`);
+  } catch(e) {
+    console.warn(`[pronos] /odds/live indisponible pour fixture ${fid} (${home.name} vs ${away.name}):`, e.message);
+    return null;
+  }
+  if (!data || data.length===0) {
+    console.warn(`[pronos] /odds/live vide pour fixture ${fid} (${home.name} vs ${away.name})`);
+    return null;
+  }
+  const parsed = parseOdds1xbet(data, home.name, away.name);
+  if (!parsed || !parsed.home1x2) {
+    console.warn(`[pronos] /odds/live : structure inattendue pour fixture ${fid}, réponse brute :`, JSON.stringify(data).slice(0,3000));
+    return null;
+  }
+  return parsed;
+}
+
+function findLiveValueBets(mp, liveOdds, homeName, awayName) {
+  const valueBets=[];
+  function checkValue(market,pick,modelProb,odd){
+    if(!odd||odd<=1||modelProb===undefined)return;
+    const impliedProb=oddsToProb(odd), edge=modelProb-impliedProb;
+    if(edge>0.03) valueBets.push({market,pick,modelProb:Math.round(modelProb*100),impliedProb:Math.round(impliedProb*100),odd,edge:Math.round(edge*100)});
+  }
+  const o=liveOdds;
+  if(o.home1x2)checkValue('Résultat (1X2)',`Victoire ${homeName}`,mp.pH,o.home1x2);
+  if(o.draw1x2)checkValue('Résultat (1X2)','Match nul',mp.pD,o.draw1x2);
+  if(o.away1x2)checkValue('Résultat (1X2)',`Victoire ${awayName}`,mp.pA,o.away1x2);
+  if(o.over05)checkValue('Total buts','Over 0.5',mp.pO05,o.over05);
+  if(o.under05)checkValue('Total buts','Under 0.5',1-mp.pO05,o.under05);
+  if(o.over15)checkValue('Total buts','Over 1.5',mp.pO15,o.over15);
+  if(o.under15)checkValue('Total buts','Under 1.5',1-mp.pO15,o.under15);
+  if(o.over25)checkValue('Total buts','Over 2.5',mp.pO25,o.over25);
+  if(o.under25)checkValue('Total buts','Under 2.5',1-mp.pO25,o.under25);
+  if(o.over35)checkValue('Total buts','Over 3.5',mp.pO35,o.over35);
+  if(o.under35)checkValue('Total buts','Under 3.5',1-mp.pO35,o.under35);
+  if(o.bttsYes)checkValue('BTTS (les 2 marquent)','Oui',mp.pBTTS,o.bttsYes);
+  if(o.bttsNo)checkValue('BTTS (les 2 marquent)','Non',1-mp.pBTTS,o.bttsNo);
+  if(o.wtnHome)checkValue(`${homeName} gagne sans encaisser`,'Oui',mp.pWTNH,o.wtnHome);
+  if(o.wtnAway)checkValue(`${awayName} gagne sans encaisser`,'Oui',mp.pWTNA,o.wtnAway);
+  return valueBets.sort((a,b)=>b.edge-a.edge);
+}
+
 async function showPredictions(fixture,container,btn) {
   const live=isLive(fixture);
   if(!live&&container.dataset.loaded==="true"){
@@ -350,7 +402,7 @@ async function showPredictions(fixture,container,btn) {
       if(ls)html+=`<div class="stats-box">📊 <b>${home.name}</b>: ${ls.hP}% poss · ${ls.hSh} tirs (${ls.hShOn} cadrés) · ${ls.hC} corners<br>📊 <b>${away.name}</b>: ${ls.aP}% poss · ${ls.aSh} tirs (${ls.aShOn} cadrés) · ${ls.aC} corners</div>`;
 
       const cal = await getCalibratedModel(fixture);
-      let pH,pD,pA,extraRows=[];
+      let pH,pD,pA,extraRows=[],liveValueBets=null;
       if (cal) {
         // Ancré sur le modèle Poisson pré-match (calibré sur les cotes 1xBet) :
         // on simule uniquement les buts du temps restant, puis on les ajoute au score actuel.
@@ -361,6 +413,10 @@ async function showPredictions(fixture,container,btn) {
         const laRem = Math.max(0.02, cal.la*frac*(1-dom*0.3));
         const mp = computeRemainingMarketProbs(hG, aG, lhRem, laRem);
         pH=mp.pH;pD=mp.pD;pA=mp.pA;
+
+        // Tentative de comparaison à de vraies cotes live 1xBet (edge réel, comme en pré-match)
+        const liveOdds = await getLiveOdds1xbet(fixture);
+        if (liveOdds) liveValueBets = findLiveValueBets(mp, liveOdds, home.name, away.name);
 
         // On ne garde que les marchés encore réellement incertains (ni quasi acquis, ni quasi exclus par le score actuel)
         const isOpen = p => p>0.04 && p<0.96;
@@ -395,8 +451,17 @@ async function showPredictions(fixture,container,btn) {
         html+=`<div class="no-odds" style="padding:8px 0;text-align:left;">⚠️ Cotes 1xBet indisponibles : estimation basée sur le score/temps uniquement.</div>`;
       }
       const all1X2 = [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}];
-      const topPick = [...all1X2,...extraRows].reduce((best,r)=>r.p>best.p?r:best, all1X2[0]);
-      html+=renderTopPickLive(topPick.label, topPick.p);
+      if (liveValueBets && liveValueBets.length>0) {
+        html+=renderTopPick(liveValueBets[0]);
+        const rest=liveValueBets.slice(1);
+        if(rest.length>0){
+          html+=`<div style="font-size:11px;color:#8a9ab8;margin:4px 0 10px;">${rest.length} autre${rest.length>1?'s':''} opportunité${rest.length>1?'s':''} en direct</div>`;
+          html+=rest.map(renderValueBet).join("");
+        }
+      } else {
+        const topPick = [...all1X2,...extraRows].reduce((best,r)=>r.p>best.p?r:best, all1X2[0]);
+        html+=renderTopPickLive(topPick.label, topPick.p);
+      }
       html+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin-bottom:6px;">📊 Probabilités en temps réel</div>`;
       all1X2.sort((a,b)=>b.p-a.p).forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
       extraRows.forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
