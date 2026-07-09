@@ -504,8 +504,11 @@ async function getCalibratedModel(fixture) {
       const formLh=(homeForm.avgScored+awayForm.avgConceded)/2;
       const formLa=(awayForm.avgScored+homeForm.avgConceded)/2;
       recordPrediction(fixture, oddsLh, oddsLa, formLh, formLa);
-      lh=oddsLh*0.7+formLh*0.3; la=oddsLa*0.7+formLa*0.3;
-      source='odds+form';
+      // Le suivi (panneau Debug > Fiabilité cotes vs forme) montre de façon constante, sur un
+      // échantillon croissant, que mélanger la forme récente dégrade la précision par rapport aux
+      // cotes seules (100% cotes reste toujours le meilleur score de Brier). On arrête donc d'appliquer
+      // ce mélange aux probabilités affichées, tout en continuant d'enregistrer les prédictions pour
+      // vérifier que ça reste vrai sur un échantillon encore plus grand.
     }
     const result={lh,la,parsed,source};
     fixtureOddsCache[fid]=result;
