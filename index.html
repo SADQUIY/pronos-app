@@ -319,12 +319,28 @@ function computeModelProbabilities(lh, la) {
   return {pH,pD,pA,pO05,pO15,pO25,pO35,pBTTS,pNilNil,pSD,p1HO05,p1HO15,p2HO05,p2HO15,pHScore05,pHScore15,pAScore05,pAScore15,pWTNH,pWTNA,pWTNAny:pWTNH+pWTNA,htftMap,pWBH,pWBA,pDB,pBEH};
 }
 
+// Évite d'afficher plusieurs paris corrélés qui racontent la même histoire (ex: Under 1.5/2.5/3.5
+// en même temps) : on ne garde que le meilleur edge par marché (ex: un seul "Total buts", un seul
+// "HT-FT", etc.), plutôt que de multiplier des variantes du même avis sous-jacent.
+function dedupeByMarket(bets){
+  const bestByMarket={};
+  bets.forEach(vb=>{
+    if(!bestByMarket[vb.market] || vb.edge>bestByMarket[vb.market].edge) bestByMarket[vb.market]=vb;
+  });
+  return Object.values(bestByMarket);
+}
+
 function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
   const valueBets=[];
   function checkValue(market,pick,modelProb,odd1xbet){
     if(!odd1xbet||odd1xbet<=1)return;
     const impliedProb=oddsToProb(odd1xbet), edge=modelProb-impliedProb;
-    if(edge>0.03) valueBets.push({market,pick,modelProb:Math.round(modelProb*100),impliedProb:Math.round(impliedProb*100),odd:odd1xbet,edge:Math.round(edge*100)});
+    if(edge>0.03){
+      // On arrondit modèle et implicite d'abord, puis on calcule l'edge affiché à partir de ces
+      // valeurs arrondies, pour que le badge corresponde toujours exactement à Modèle - Implicite.
+      const mp100=Math.round(modelProb*100), ip100=Math.round(impliedProb*100);
+      valueBets.push({market,pick,modelProb:mp100,impliedProb:ip100,odd:odd1xbet,edge:mp100-ip100});
+    }
   }
   const o=odds1xbet;
   if(o.home1x2)checkValue('Résultat (1X2)',`Victoire ${homeName}`,modelProbs.pH,o.home1x2);
@@ -357,7 +373,7 @@ function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
   if(o.awayScore05)checkValue(`${awayName} marque`,'Oui',modelProbs.pAScore05,o.awayScore05);
   const htftKeys={'1/1':`${homeName}/${homeName}`,'1/X':`${homeName}/Nul`,'X/X':'Nul/Nul','X/1':`Nul/${homeName}`,'X/2':`Nul/${awayName}`,'2/2':`${awayName}/${awayName}`,'2/X':`${awayName}/Nul`,'2/1':`${awayName}/${homeName}`,'1/2':`${homeName}/${awayName}`};
   Object.entries(htftKeys).forEach(([key,label])=>{if(o[`htft_${key}`])checkValue('HT-FT',label,modelProbs.htftMap[key]||0,o[`htft_${key}`]);});
-  return valueBets.sort((a,b)=>b.edge-a.edge);
+  return dedupeByMarket(valueBets).sort((a,b)=>b.edge-a.edge);
 }
 
 function parseOdds1xbet(oddsData, homeName, awayName) {
@@ -704,7 +720,10 @@ function findLiveValueBets(mp, liveOdds, homeName, awayName) {
   function checkValue(market,pick,modelProb,odd){
     if(!odd||odd<=1||modelProb===undefined)return;
     const impliedProb=oddsToProb(odd), edge=modelProb-impliedProb;
-    if(edge>0.03) valueBets.push({market,pick,modelProb:Math.round(modelProb*100),impliedProb:Math.round(impliedProb*100),odd,edge:Math.round(edge*100)});
+    if(edge>0.03){
+      const mp100=Math.round(modelProb*100), ip100=Math.round(impliedProb*100);
+      valueBets.push({market,pick,modelProb:mp100,impliedProb:ip100,odd,edge:mp100-ip100});
+    }
   }
   const o=liveOdds;
   if(o.home1x2)checkValue('Résultat (1X2)',`Victoire ${homeName}`,mp.pH,o.home1x2);
@@ -722,7 +741,7 @@ function findLiveValueBets(mp, liveOdds, homeName, awayName) {
   if(o.bttsNo)checkValue('BTTS (les 2 marquent)','Non',1-mp.pBTTS,o.bttsNo);
   if(o.wtnHome)checkValue(`${homeName} gagne sans encaisser`,'Oui',mp.pWTNH,o.wtnHome);
   if(o.wtnAway)checkValue(`${awayName} gagne sans encaisser`,'Oui',mp.pWTNA,o.wtnAway);
-  return valueBets.sort((a,b)=>b.edge-a.edge);
+  return dedupeByMarket(valueBets).sort((a,b)=>b.edge-a.edge);
 }
 
 async function showPredictions(fixture,container,btn) {
