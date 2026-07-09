@@ -770,9 +770,16 @@ function renderMatch(fixture) {
   const kickoff=new Date(fixture.fixture.date);
   const timeStr=kickoff.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
   const elapsed=fixture.fixture.status.elapsed;
+  const minutesSinceKickoff=(Date.now()-kickoff.getTime())/60000;
   let tb;
   if(isLive(fixture))tb=`<span class="badge-live">${elapsed?elapsed+"'":"Live"}</span>`;
   else if(isFinished(fixture)){const sc=fixture.goals.home!==null?`${fixture.goals.home}-${fixture.goals.away}`:"FT";tb=`<span class="badge-done">✅ ${sc}</span>`;}
+  else if(isUpcoming(fixture) && minutesSinceKickoff>70){
+    // Le coup d'envoi est passé depuis longtemps mais l'API n'a jamais mis à jour le statut du match
+    // (fréquent sur des amicaux peu suivis, sans flux live fiable) : on le signale au lieu de faire
+    // comme si le match n'avait pas encore commencé.
+    tb=`<span class="time-badge" style="color:#b08900;" title="Statut non mis à jour par l'API">⚠️ ${timeStr}</span>`;
+  }
   else tb=`<span class="time-badge">${timeStr}</span>`;
   const ss=(isLive(fixture)||isFinished(fixture))&&fixture.goals.home!==null;
   const card=document.createElement("div");card.className="card";
