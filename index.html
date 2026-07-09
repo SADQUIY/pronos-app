@@ -274,6 +274,17 @@ function normalizeProbabilities(probs) { const t=probs.reduce((s,p)=>s+p,0); ret
 
 function poissonProb(lambda, k) { let p=Math.exp(-lambda); for(let i=0;i<k;i++) p*=lambda/(i+1); return p; }
 function buildScoreMatrix(lh, la, max=7) { const m=[]; for(let i=0;i<=max;i++){m[i]=[];for(let j=0;j<=max;j++)m[i][j]=poissonProb(lh,i)*poissonProb(la,j);} return m; }
+// Marché "Handicap" 1xBet : "1 (h)" = équipe domicile gagne après ajout de h à son score,
+// "2 (h)" = équipe extérieure gagne après ajout de h à son score. On réutilise la grille de scores.
+function handicapProb(lh, la, team, h) {
+  const M=buildScoreMatrix(lh,la,8);
+  let p=0;
+  for(let i=0;i<=8;i++) for(let j=0;j<=8;j++){
+    const adjHome=team===1?i+h:i, adjAway=team===2?j+h:j;
+    if(adjHome>adjAway) p+=M[i][j];
+  }
+  return p;
+}
 
 function estimateLambdas(pH, pD, pA) {
   function scoreAt(lh, la) {
@@ -305,6 +316,7 @@ function computeModelProbabilities(lh, la) {
   const max=7;
   let pH=0,pD=0,pA=0,pO05=0,pO15=0,pO25=0,pO35=0,pBTTS=0,pNilNil=0,pSD=0;
   let p1HO05=0,p1HO15=0,p2HO05=0,p2HO15=0,pHScore05=0,pHScore15=0,pAScore05=0,pAScore15=0,pWTNH=0,pWTNA=0;
+  let pFH_H=0,pFH_D=0,pFH_A=0,pSH_H=0,pSH_D=0,pSH_A=0;
   for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
     const p=M[i][j];
     if(i>j)pH+=p;else if(i===j)pD+=p;else pA+=p;
@@ -314,8 +326,11 @@ function computeModelProbabilities(lh, la) {
     if(i>j&&j===0)pWTNH+=p;if(j>i&&i===0)pWTNA+=p;
   }
   for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
-    if(i+j>0)p1HO05+=M1[i][j];if(i+j>1)p1HO15+=M1[i][j];
-    if(i+j>0)p2HO05+=M2[i][j];if(i+j>1)p2HO15+=M2[i][j];
+    const p1=M1[i][j], p2=M2[i][j];
+    if(i+j>0)p1HO05+=p1;if(i+j>1)p1HO15+=p1;
+    if(i+j>0)p2HO05+=p2;if(i+j>1)p2HO15+=p2;
+    if(i>j)pFH_H+=p1;else if(i===j)pFH_D+=p1;else pFH_A+=p1;
+    if(i>j)pSH_H+=p2;else if(i===j)pSH_D+=p2;else pSH_A+=p2;
   }
   const htftMap={};
   for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
@@ -326,6 +341,16 @@ function computeModelProbabilities(lh, la) {
       htftMap[htR+'/'+ftR]=(htftMap[htR+'/'+ftR]||0)+p1*p2;
     }
   }
+  // "First Half/Second Half Result" (marché réel 1xBet) : résultat de la 1ère MT ET de la 2ème MT,
+  // chacune prise ISOLÉMENT (pas cumulée comme HT-FT) — 9 combinaisons 1/1, 1/X, 1/2, X/1, X/X, X/2, 2/1, 2/X, 2/2.
+  const fhshMap={};
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+    const p1=M1[i][j];if(!p1)continue;const r1=i>j?'1':i===j?'X':'2';
+    for(let k=0;k<=max;k++) for(let l=0;l<=max;l++){
+      const p2=M2[k][l];if(!p2)continue;const r2=k>l?'1':k===l?'X':'2';
+      fhshMap[r1+'/'+r2]=(fhshMap[r1+'/'+r2]||0)+p1*p2;
+    }
+  }
   let pWBH=0,pWBA=0,pDB=0,pBEH=0;
   for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
     const p1=M1[i][j];if(!p1)continue;
@@ -334,7 +359,11 @@ function computeModelProbabilities(lh, la) {
       if(i>j&&k>l)pWBH+=w;if(i<j&&k<l)pWBA+=w;if(i===j&&k===l)pDB+=w;if(i>0&&j>0&&k>0&&l>0)pBEH+=w;
     }
   }
-  return {pH,pD,pA,pO05,pO15,pO25,pO35,pBTTS,pNilNil,pSD,p1HO05,p1HO15,p2HO05,p2HO15,pHScore05,pHScore15,pAScore05,pAScore15,pWTNH,pWTNA,pWTNAny:pWTNH+pWTNA,htftMap,pWBH,pWBA,pDB,pBEH};
+  // Toutes les probabilités de score exact (pas juste 0-0), pour comparer à TOUS les scores que
+  // 1xBet propose réellement dans son marché "Correct Score", plutôt qu'une liste devinée à l'avance.
+  const exactScoreMap={};
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){ exactScoreMap[`${i}-${j}`]=M[i][j]; }
+  return {pH,pD,pA,pO05,pO15,pO25,pO35,pBTTS,pNilNil,pSD,p1HO05,p1HO15,p2HO05,p2HO15,pHScore05,pHScore15,pAScore05,pAScore15,pWTNH,pWTNA,pWTNAny:pWTNH+pWTNA,htftMap,exactScoreMap,fhshMap,pWBH,pWBA,pDB,pBEH,pFH_H,pFH_D,pFH_A,pSH_H,pSH_D,pSH_A};
 }
 
 // Évite d'afficher plusieurs paris corrélés qui racontent la même histoire (ex: Under 1.5/2.5/3.5
@@ -348,7 +377,7 @@ function dedupeByMarket(bets){
   return Object.values(bestByMarket);
 }
 
-function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
+function findValueBets(modelProbs, odds1xbet, homeName, awayName, lh, la) {
   const valueBets=[];
   function checkValue(market,pick,modelProb,odd1xbet){
     if(!odd1xbet||odd1xbet<=1)return;
@@ -380,7 +409,10 @@ function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
   if(o.wtnHome)checkValue(`${homeName} gagne sans encaisser`,'Oui',modelProbs.pWTNH,o.wtnHome);
   if(o.wtnAway)checkValue(`${awayName} gagne sans encaisser`,'Oui',modelProbs.pWTNA,o.wtnAway);
   if(o.scoreDraw)checkValue('Match nul avec buts','Oui',modelProbs.pSD,o.scoreDraw);
-  if(o.nilNil)checkValue('0-0','Oui',modelProbs.pNilNil,o.nilNil);
+  (o.exactScores||[]).forEach(es=>{
+    const p=modelProbs.exactScoreMap[es.label];
+    if(p!==undefined) checkValue('Score exact',es.label,p,es.odd);
+  });
   if(o.ht_over05)checkValue('1ère MT Over 0.5','Oui',modelProbs.p1HO05,o.ht_over05);
   if(o.ht_under05)checkValue('1ère MT Under 0.5','Oui',1-modelProbs.p1HO05,o.ht_under05);
   if(o.ht_over15)checkValue('1ère MT Over 1.5','Oui',modelProbs.p1HO15,o.ht_over15);
@@ -389,8 +421,49 @@ function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
   if(o.sh_over15)checkValue('2ème MT Over 1.5','Oui',modelProbs.p2HO15,o.sh_over15);
   if(o.homeScore05)checkValue(`${homeName} marque`,'Oui',modelProbs.pHScore05,o.homeScore05);
   if(o.awayScore05)checkValue(`${awayName} marque`,'Oui',modelProbs.pAScore05,o.awayScore05);
+  // "First Half/Second Half Result" : on essaie plusieurs formats de libellé possibles (1/1, 1-1,
+  // Home/Home...) car on ne peut pas garantir lequel 1xBet utilise exactement sans avoir pu tester en direct.
+  const fhshLabelVariants={
+    '1/1':[`${homeName}/${homeName}`],'1/X':[`${homeName}/Nul`],'1/2':[`${homeName}/${awayName}`],
+    'X/1':[`Nul/${homeName}`],'X/X':['Nul/Nul'],'X/2':[`Nul/${awayName}`],
+    '2/1':[`${awayName}/${homeName}`],'2/X':[`${awayName}/Nul`],'2/2':[`${awayName}/${awayName}`]
+  };
+  (o.fhshOdds||[]).forEach(fs=>{
+    let p=modelProbs.fhshMap[fs.label]; // tente d'abord le format brut "1/1", "X/2", etc.
+    if(p===undefined){
+      // sinon cherche si le libellé correspond à une variante nommée (ex: "France/France")
+      const key=Object.keys(fhshLabelVariants).find(k=>fhshLabelVariants[k].includes(fs.label));
+      if(key) p=modelProbs.fhshMap[key];
+    }
+    if(p!==undefined) checkValue('1ère MT/2ème MT',fs.label,p,fs.odd);
+  });
   const htftKeys={'1/1':`${homeName}/${homeName}`,'1/X':`${homeName}/Nul`,'X/X':'Nul/Nul','X/1':`Nul/${homeName}`,'X/2':`Nul/${awayName}`,'2/2':`${awayName}/${awayName}`,'2/X':`${awayName}/Nul`,'2/1':`${awayName}/${homeName}`,'1/2':`${homeName}/${awayName}`};
   Object.entries(htftKeys).forEach(([key,label])=>{if(o[`htft_${key}`])checkValue('HT-FT',label,modelProbs.htftMap[key]||0,o[`htft_${key}`]);});
+  // "Total 1" / "Total 2" (buts d'une équipe précise, indépendamment de l'autre) : chaque équipe suit
+  // sa propre loi de Poisson (lh pour l'équipe à domicile, la pour l'extérieur), donc pas besoin de la
+  // grille croisée — juste la probabilité directe qu'elle marque plus/moins que la ligne proposée.
+  function teamTotalProb(lambda, line, isOver){
+    const k=Math.floor(line);
+    let pUnderOrEqual=0;
+    for(let n=0;n<=k;n++) pUnderOrEqual+=poissonProb(lambda,n);
+    return isOver ? 1-pUnderOrEqual : pUnderOrEqual - (Number.isInteger(line)?poissonProb(lambda,line):0);
+  }
+  if(lh!==undefined&&la!==undefined){
+    (o.team1Totals||[]).forEach(t=>{
+      const m=t.label.match(/(Over|Under) ([\d.]+)/);
+      if(m) checkValue(`Total ${homeName}`,t.label,teamTotalProb(lh,parseFloat(m[2]),m[1]==='Over'),t.odd);
+    });
+    (o.team2Totals||[]).forEach(t=>{
+      const m=t.label.match(/(Over|Under) ([\d.]+)/);
+      if(m) checkValue(`Total ${awayName}`,t.label,teamTotalProb(la,parseFloat(m[2]),m[1]==='Over'),t.odd);
+    });
+    (o.handicapOdds||[]).forEach(h=>{
+      const p=handicapProb(lh,la,h.team,h.h);
+      const teamName=h.team===1?homeName:awayName;
+      const label=`${teamName} (${h.h>0?'+':''}${h.h})`;
+      checkValue('Handicap',label,p,h.odd);
+    });
+  }
   return dedupeByMarket(valueBets).sort((a,b)=>b.edge-a.edge);
 }
 
@@ -412,8 +485,46 @@ function parseOdds1xbet(oddsData, homeName, awayName) {
   result.ht_over15=getBet('First Half - Goals Over/Under','Over 1.5');result.ht_under15=getBet('First Half - Goals Over/Under','Under 1.5');
   result.sh_over05=getBet('Second Half - Goals Over/Under','Over 0.5');result.sh_over15=getBet('Second Half - Goals Over/Under','Over 1.5');
   result.wtnHome=getBet('Win to Nil','Home');result.wtnAway=getBet('Win to Nil','Away');
-  result.scoreDraw=getBet('Score - Both Teams To Score','Yes');result.nilNil=getBet('Exact Score','0-0');
+  result.scoreDraw=getBet('Score - Both Teams To Score','Yes');
+  // Tous les scores exacts que 1xBet propose réellement pour ce match (variable selon le match :
+  // certains n'ont que 8-10 scores listés, d'autres 20+), plutôt qu'une liste de scores devinée à l'avance.
+  const exactScoreBet=bk.bets?.find(b=>b.name==='Exact Score'||b.name==='Correct Score');
+  result.exactScores=exactScoreBet ? exactScoreBet.values.map(v=>{
+    const odd=parseFloat(v.odd);
+    return isNaN(odd)?null:{label:v.value,odd};
+  }).filter(Boolean) : [];
   result.homeScore05=getBet(`${homeName} Total Goals`,'Over 0.5');result.awayScore05=getBet(`${awayName} Total Goals`,'Over 0.5');
+  // Résultat de chaque mi-temps séparément (Victoire/Nul/Défaite en 1ère et 2ème MT). Noms de marché
+  // devinés par analogie avec 'Match Winner' — à vérifier via le journal technique si jamais absents.
+  // Confirmé via une capture réelle de 1xBet : le marché s'appelle "First Half/Second Half Result",
+  // avec 9 combinaisons (résultat de la 1ère MT / résultat de la 2ème MT, chacune prise isolément,
+  // pas cumulée comme pour HT-FT). On récupère toutes celles que 1xBet propose pour ce match.
+  const fhshBet=bk.bets?.find(b=>b.name==='First Half/Second Half Result');
+  result.fhshOdds=fhshBet ? fhshBet.values.map(v=>{
+    const odd=parseFloat(v.odd);
+    return isNaN(odd)?null:{label:v.value,odd};
+  }).filter(Boolean) : [];
+  if(fhshBet===undefined){
+    console.warn(`[pronos] Marché 'First Half/Second Half Result' introuvable pour ${homeName} vs ${awayName}. Marchés disponibles :`, (bk.bets||[]).map(b=>b.name).join(', '));
+  }
+  // "Total 1" / "Total 2" (buts d'une équipe précise, toutes lignes proposées par 1xBet)
+  const parseTeamTotal=(marketName)=>{
+    const bet=bk.bets?.find(b=>b.name===marketName);
+    return bet ? bet.values.map(v=>{
+      const odd=parseFloat(v.odd);
+      return isNaN(odd)?null:{label:v.value,odd};
+    }).filter(Boolean) : [];
+  };
+  result.team1Totals=parseTeamTotal('Total 1');
+  result.team2Totals=parseTeamTotal('Total 2');
+  // "Handicap" : format "1 (-3.5)" / "2 (3.5)" etc. (équipe 1 ou 2 + valeur du handicap appliqué)
+  const handicapBet=bk.bets?.find(b=>b.name==='Handicap');
+  result.handicapOdds=handicapBet ? handicapBet.values.map(v=>{
+    const odd=parseFloat(v.odd);
+    const m=v.value.match(/^(1|2)\s*\(([+-]?[\d.]+)\)$/);
+    if(!m||isNaN(odd)) return null;
+    return {team:parseInt(m[1]),h:parseFloat(m[2]),odd,label:v.value};
+  }).filter(Boolean) : [];
   return result;
 }
 
@@ -905,11 +1016,14 @@ async function showPredictions(fixture,container,btn) {
         html+=`<div class="no-odds" style="padding:6px 0 14px;">⚠️ Cotes 1xBet indisponibles pour ce match : estimation basée sur les derniers matchs de chaque équipe (pas de comparaison à une cote possible).</div>`;
         const modelProbs=computeModelProbabilities(cal.lh,cal.la);
         [{label:`Victoire ${home.name}`,p:modelProbs.pH},{label:'Match nul',p:modelProbs.pD},{label:`Victoire ${away.name}`,p:modelProbs.pA},{label:'BTTS Oui',p:modelProbs.pBTTS},{label:'Over 2.5',p:modelProbs.pO25}].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+        const fhFav=[{label:`1ère MT : ${home.name}`,p:modelProbs.pFH_H},{label:'1ère MT : Nul',p:modelProbs.pFH_D},{label:`1ère MT : ${away.name}`,p:modelProbs.pFH_A}].sort((a,b)=>b.p-a.p)[0];
+        const shFav=[{label:`2ème MT : ${home.name}`,p:modelProbs.pSH_H},{label:'2ème MT : Nul',p:modelProbs.pSH_D},{label:`2ème MT : ${away.name}`,p:modelProbs.pSH_A}].sort((a,b)=>b.p-a.p)[0];
+        [fhFav,shFav].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label} (favori)</div>${confidenceBarHTML(r.p)}</div>`;});
       } else {
         html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
         const {lh,la,parsed}=cal;
         const modelProbs=computeModelProbabilities(lh,la);
-        const valueBets=findValueBets(modelProbs,parsed,home.name,away.name);
+        const valueBets=findValueBets(modelProbs,parsed,home.name,away.name,lh,la);
         if(valueBets.length===0){
           html+=`<div class="no-odds">✅ Aucun value bet détecté.<br>Les cotes semblent correctement évaluées.</div>`;
         } else {
@@ -923,6 +1037,9 @@ async function showPredictions(fixture,container,btn) {
         }
         html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:12px 0 6px;padding-top:10px;border-top:1px dashed #e0e4ee;text-transform:uppercase;letter-spacing:0.5px;">Probabilités du modèle${cal.source==='odds+form'?' (cotes + forme récente)':''}</div>`;
         [{label:`Victoire ${home.name}`,p:modelProbs.pH},{label:'Match nul',p:modelProbs.pD},{label:`Victoire ${away.name}`,p:modelProbs.pA},{label:'BTTS Oui',p:modelProbs.pBTTS},{label:'Over 2.5',p:modelProbs.pO25}].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+        const fhFav=[{label:`1ère MT : ${home.name}`,p:modelProbs.pFH_H},{label:'1ère MT : Nul',p:modelProbs.pFH_D},{label:`1ère MT : ${away.name}`,p:modelProbs.pFH_A}].sort((a,b)=>b.p-a.p)[0];
+        const shFav=[{label:`2ème MT : ${home.name}`,p:modelProbs.pSH_H},{label:'2ème MT : Nul',p:modelProbs.pSH_D},{label:`2ème MT : ${away.name}`,p:modelProbs.pSH_A}].sort((a,b)=>b.p-a.p)[0];
+        [fhFav,shFav].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label} (favori)</div>${confidenceBarHTML(r.p)}</div>`;});
       }
       container.dataset.loaded="true";
     }
