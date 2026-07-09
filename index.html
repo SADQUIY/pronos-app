@@ -412,9 +412,12 @@ function renderTopPick(vb) {
   return `<div class="top-pick"><div class="top-pick-label">🏆 Meilleur pari recommandé</div><div class="top-pick-market">${vb.market}</div><div class="top-pick-pick">${vb.pick}</div><div class="top-pick-row"><div class="top-pick-odds">Cote: <b>${vb.odd}</b> · Modèle: <b>${vb.modelProb}%</b> · Implicite: <b>${vb.impliedProb}%</b></div><span class="top-pick-badge">${icon} +${vb.edge}%</span></div></div>`;
 }
 
-function renderTopPickLive(label, p) {
+function renderTopPickLive(label, p, noOddsAtAll) {
   const pct=Math.round(p*100), icon=pct>=75?'🔥':pct>=60?'⚡':'✅';
-  return `<div class="top-pick live-top-pick"><div class="top-pick-label">🏆 Meilleur pari en direct</div><div class="top-pick-pick">${label}</div><div class="top-pick-row"><div class="top-pick-odds top-pick-note">Confiance du modèle projeté (score + temps restant) — pas de cote live comparée</div><span class="top-pick-badge">${icon} ${pct}%</span></div></div>`;
+  const note = noOddsAtAll
+    ? "Estimation statistique théorique — aucune cote 1xBet trouvée pour ce match, donc on ne sait pas si ce marché est même proposé"
+    : "Confiance du modèle projeté (score + temps restant) — pas de cote live comparée";
+  return `<div class="top-pick live-top-pick"><div class="top-pick-label">🏆 Meilleur pari en direct</div><div class="top-pick-pick">${label}</div><div class="top-pick-row"><div class="top-pick-odds top-pick-note">${note}</div><span class="top-pick-badge">${icon} ${pct}%</span></div></div>`;
 }
 
 function confidenceBarHTML(v) {
@@ -864,7 +867,7 @@ async function showPredictions(fixture,container,btn) {
         }
       } else {
         const topPick = [...all1X2,...extraRows].reduce((best,r)=>r.p>best.p?r:best, all1X2[0]);
-        html+=renderTopPickLive(topPick.label, topPick.p);
+        html+=renderTopPickLive(topPick.label, topPick.p, !cal);
       }
       html+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin-bottom:6px;">📊 Probabilités en temps réel</div>`;
       all1X2.sort((a,b)=>b.p-a.p).forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
