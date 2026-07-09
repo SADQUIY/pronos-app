@@ -261,6 +261,16 @@ const LIVE_STATUSES = ["1H","HT","2H","ET","BT","P","SUSP","INT","LIVE"];
 const DONE_STATUSES = ["FT","AET","PEN","AWD","WO"];
 function isLive(f) { return LIVE_STATUSES.includes(f.fixture.status.short); }
 function isFinished(f) { return DONE_STATUSES.includes(f.fixture.status.short); }
+// Un match "en direct" dont le statut n'a manifestement pas bougé depuis très longtemps (l'API n'a
+// jamais mis à jour la minute ou le statut final) : on le traite comme terminé dans l'app, plutôt
+// que de le laisser bloqué indéfiniment dans l'onglet EN DIRECT.
+function isStaleLive(f) {
+  if (!isLive(f)) return false;
+  const kickoff = new Date(f.fixture.date).getTime();
+  const minutesSinceKickoff = (Date.now()-kickoff)/60000;
+  const elapsed = f.fixture.status.elapsed || 0;
+  return (minutesSinceKickoff - elapsed) > 60;
+}
 function isUpcoming(f) { return !isLive(f) && !isFinished(f); }
 const LEAGUE_PRIORITY = ["world cup","fifa world cup","champions league","premier league","la liga","serie a","bundesliga","ligue 1","europa league","conference league","eredivisie","primeira liga","super lig","botola","nations league","afcon","copa america"];
 function leaguePriority(n) { const name=(n||"").toLowerCase(); for(let i=0;i<LEAGUE_PRIORITY.length;i++) if(name.includes(LEAGUE_PRIORITY[i])) return i; return LEAGUE_PRIORITY.length; }
@@ -1081,10 +1091,21 @@ function renderMatch(fixture) {
   const home=fixture.teams.home,away=fixture.teams.away;
   const kickoff=new Date(fixture.fixture.date);
   const timeStr=kickoff.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+  if(timeStr==="00:00"){
+    console.warn(`[pronos] Heure 00:00 pour fixture ${fixture.fixture.id} (${home.name} vs ${away.name}) : date brute API = "${fixture.fixture.date}", statut = "${fixture.fixture.status.long}" (${fixture.fixture.status.short})`);
+  }
   const elapsed=fixture.fixture.status.elapsed;
   const minutesSinceKickoff=(Date.now()-kickoff.getTime())/60000;
   let tb;
-  if(isLive(fixture))tb=`<span class="badge-live">${elapsed?elapsed+"'":"Live"}</span>`;
+  const stale = isStaleLive(fixture);
+  if(stale){
+    console.warn(`[pronos] Statut live probablement figé pour fixture ${fixture.fixture.id} (${home.name} vs ${away.name}) : ${minutesSinceKickoff.toFixed(0)} min réelles depuis le coup d'envoi, mais statut toujours "${elapsed}'" (${fixture.fixture.status.long}). Basculé vers Terminés.`);
+    const sc=fixture.goals.home!==null?`${fixture.goals.home}-${fixture.goals.away}`:"?";
+    tb=`<span class="badge-done" style="color:#b08900;" title="Dernier score connu, statut jamais confirmé terminé par l'API">⚠️ ${sc} (non confirmé)</span>`;
+  }
+  else if(isLive(fixture)){
+    tb=`<span class="badge-live">${elapsed?elapsed+"'":"Live"}</span>`;
+  }
   else if(isFinished(fixture)){const sc=fixture.goals.home!==null?`${fixture.goals.home}-${fixture.goals.away}`:"FT";tb=`<span class="badge-done">✅ ${sc}</span>`;}
   else if(isUpcoming(fixture) && minutesSinceKickoff>70){
     // Le coup d'envoi est passé depuis longtemps mais l'API n'a jamais mis à jour le statut du match
@@ -1095,7 +1116,7 @@ function renderMatch(fixture) {
   else tb=`<span class="time-badge">${timeStr}</span>`;
   const ss=(isLive(fixture)||isFinished(fixture))&&fixture.goals.home!==null;
   const card=document.createElement("div");card.className="card";
-  card.innerHTML=`<div class="card-top"><span class="card-round">${fixture.league.round||""}</span>${tb}</div><div class="teams-row"><div class="team-block"><img src="${home.logo}" onerror="this.style.display='none'" style="width:20px;height:20px;object-fit:contain;flex-shrink:0" alt=""/><span class="team-name">${home.name}</span></div><div class="score-block">${ss?`<span class="score">${fixture.goals.home}</span><span class="score-sep">-</span><span class="score">${fixture.goals.away}</span>`:`<span class="vs-text">VS</span>`}</div><div class="team-block away"><img src="${away.logo}" onerror="this.style.display='none'" style="width:20px;height:20px;object-fit:contain;flex-shrink:0" alt=""/><span class="team-name">${away.name}</span></div></div><button class="pred-btn${isLive(fixture)?" live-btn":""}">👁 Analyser</button><div class="predictions" style="display:none"></div>`;
+  card.innerHTML=`<div class="card-top"><span class="card-round">${fixture.league.round||""}</span>${tb}</div><div class="teams-row"><div class="team-block"><img src="${home.logo}" onerror="this.style.display='none'" style="width:20px;height:20px;object-fit:contain;flex-shrink:0" alt=""/><span class="team-name">${home.name}</span></div><div class="score-block">${ss?`<span class="score">${fixture.goals.home}</span><span class="score-sep">-</span><span class="score">${fixture.goals.away}</span>`:`<span class="vs-text">VS</span>`}</div><div class="team-block away"><img src="${away.logo}" onerror="this.style.display='none'" style="width:20px;height:20px;object-fit:contain;flex-shrink:0" alt=""/><span class="team-name">${away.name}</span></div></div><button class="pred-btn${(isLive(fixture)&&!stale)?" live-btn":""}">👁 Analyser</button><div class="predictions" style="display:none"></div>`;
   const btn=card.querySelector(".pred-btn"),pc=card.querySelector(".predictions");
   btn.addEventListener("click",()=>showPredictions(fixture,pc,btn));
 
@@ -1133,7 +1154,7 @@ function renderTab(fixtures) {
   const bl={};
   fixtures.forEach(f=>{const k=`${f.league.id}`;if(!bl[k])bl[k]={id:k,name:f.league.name,country:f.league.country,fixtures:[]};bl[k].fixtures.push(f);});
   Object.values(bl).forEach(g=>{
-    g.hasLive=g.fixtures.some(f=>isLive(f));
+    g.hasLive=g.fixtures.some(f=>isLive(f)&&!isStaleLive(f));
     g.earliest=Math.min(...g.fixtures.map(f=>new Date(f.fixture.date).getTime()));
   });
   // Les groupes avec un match en direct remontent en premier ; sinon, les matchs les plus proches
@@ -1153,14 +1174,14 @@ function switchTab(tab) {
   currentTab=tab;
   ["upcoming","live","done"].forEach(t=>document.getElementById(`tab${t.charAt(0).toUpperCase()+t.slice(1)}`).classList.toggle("active",t===tab));
   let fx;
-  if(tab==="live")fx=allFixtures.filter(f=>isLive(f));
+  if(tab==="live")fx=allFixtures.filter(f=>isLive(f)&&!isStaleLive(f));
   else if(tab==="upcoming")fx=allFixtures.filter(f=>isUpcoming(f));
-  else fx=allFixtures.filter(f=>isFinished(f));
+  else fx=allFixtures.filter(f=>isFinished(f)||isStaleLive(f));
   renderTab(fx);
-  const lc=allFixtures.filter(f=>isLive(f)).length;
+  const lc=allFixtures.filter(f=>isLive(f)&&!isStaleLive(f)).length;
   document.getElementById("tabLive").innerHTML=`<span class="live-dot"></span>EN DIRECT${lc>0?` (${lc})`:""}`;
   document.getElementById("tabUpcoming").textContent=`AVANT-MATCH (${allFixtures.filter(f=>isUpcoming(f)).length})`;
-  document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)).length})`;
+  document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)||isStaleLive(f)).length})`;
 }
 
 async function loadFixtures(silent=false) {
