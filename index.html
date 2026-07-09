@@ -359,7 +359,9 @@ function parseOdds1xbet(oddsData, homeName, awayName) {
   if(!oddsData||oddsData.length===0)return null;
   let bk=null;
   for(const item of oddsData){const found=(item.bookmakers||[]).find(b=>b.id===BOOKMAKER_1XBET);if(found){bk=found;break;}}
-  if(!bk){for(const item of oddsData){if(item.bookmakers&&item.bookmakers.length>0){bk=item.bookmakers[0];break;}}}
+  // Important : on ne prend JAMAIS les cotes d'un autre bookmaker en repli silencieux. Toute l'app
+  // se présente comme "vs 1xBet" ; utiliser un autre bookmaker sans le dire fausserait le sens même
+  // du value bet affiché (l'edge serait calculé contre la mauvaise cote).
   if(!bk)return null;
   const result={};
   const getBet=(betName,valueName)=>{const bet=bk.bets?.find(b=>b.name===betName);if(!bet)return null;const v=bet.values?.find(v=>v.value===valueName||v.value?.toLowerCase()===valueName?.toLowerCase());return v?parseFloat(v.odd):null;};
