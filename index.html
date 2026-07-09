@@ -161,7 +161,7 @@ async function getTeamRecentForm(teamId) {
   if (Object.prototype.hasOwnProperty.call(teamFormCache, teamId)) return teamFormCache[teamId];
   let data=null;
   try {
-    data = await apiGet(`/fixtures?team=${teamId}&last=8`);
+    data = await apiGet(`/fixtures?team=${teamId}&last=10`);
   } catch(e) {
     console.warn(`[pronos] Forme récente indisponible pour l'équipe ${teamId}:`, e.message);
     teamFormCache[teamId]=null;
@@ -169,15 +169,33 @@ async function getTeamRecentForm(teamId) {
   }
   if(!data || data.length===0){ teamFormCache[teamId]=null; return null; }
   let scored=0, conceded=0, n=0;
+  let hScored=0, hConceded=0, hN=0, aScored=0, aConceded=0, aN=0;
   data.forEach(f=>{
     if(f.goals.home===null||f.goals.away===null) return; // match pas encore joué/terminé
     const isHome = f.teams.home.id===teamId;
-    scored += isHome?f.goals.home:f.goals.away;
-    conceded += isHome?f.goals.away:f.goals.home;
-    n++;
+    const gFor=isHome?f.goals.home:f.goals.away, gAgainst=isHome?f.goals.away:f.goals.home;
+    scored+=gFor; conceded+=gAgainst; n++;
+    if(isHome){ hScored+=gFor; hConceded+=gAgainst; hN++; }
+    else { aScored+=gFor; aConceded+=gAgainst; aN++; }
   });
   if(n===0){ teamFormCache[teamId]=null; return null; }
-  const result={avgScored:scored/n, avgConceded:conceded/n, matches:n};
+  const overallAvgScored=scored/n, overallAvgConceded=conceded/n;
+  // Une équipe peut être bien plus forte à domicile qu'à l'extérieur (ou l'inverse) : on sépare les
+  // 2 formes. Mais avec seulement ~5 matchs domicile et 5 extérieur sur 10 matchs, l'échantillon est
+  // petit et bruité : on le mélange ("shrinkage") avec la moyenne globale, pondéré par le nombre de
+  // matchs disponibles dans ce sous-groupe (poids équivalent à 2 matchs de moyenne globale).
+  const shrink=(sum,cnt,overallAvg,pseudo=2)=> cnt>0 ? (sum+overallAvg*pseudo)/(cnt+pseudo) : overallAvg;
+  const home={
+    avgScored: shrink(hScored,hN,overallAvgScored),
+    avgConceded: shrink(hConceded,hN,overallAvgConceded),
+    n:hN
+  };
+  const away={
+    avgScored: shrink(aScored,aN,overallAvgScored),
+    avgConceded: shrink(aConceded,aN,overallAvgConceded),
+    n:aN
+  };
+  const result={avgScored:overallAvgScored, avgConceded:overallAvgConceded, matches:n, home, away};
   teamFormCache[teamId]=result;
   return result;
 }
@@ -648,8 +666,8 @@ async function getCalibratedModel(fixture) {
     const {lh:oddsLh,la:oddsLa}=estimateLambdas(nH,nD,nA);
     let lh=oddsLh, la=oddsLa, source='odds';
     if (hasForm) {
-      const formLh=(homeForm.avgScored+awayForm.avgConceded)/2;
-      const formLa=(awayForm.avgScored+homeForm.avgConceded)/2;
+      const formLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
+      const formLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
       recordPrediction(fixture, oddsLh, oddsLa, formLh, formLa);
       // Le suivi (panneau Debug > Fiabilité cotes vs forme) montre de façon constante, sur un
       // échantillon croissant, que mélanger la forme récente dégrade la précision par rapport aux
@@ -663,11 +681,12 @@ async function getCalibratedModel(fixture) {
   }
 
   if (hasForm) {
-    // Pas de cotes 1xBet, mais on a l'historique des 2 équipes : on estime les lambdas directement
-    // à partir de leur attaque/défense récente (méthode standard : moyenne attaque domicile x défense
-    // adverse). Nettement plus fiable que l'ancienne heuristique score/temps pour ces matchs.
-    const lh=(homeForm.avgScored+awayForm.avgConceded)/2;
-    const la=(awayForm.avgScored+homeForm.avgConceded)/2;
+    // Pas de cotes 1xBet, mais on a l'historique des 2 équipes : on estime les lambdas à partir de
+    // l'attaque de l'équipe à domicile SPÉCIFIQUEMENT à domicile, et l'attaque de l'équipe à
+    // l'extérieur SPÉCIFIQUEMENT à l'extérieur (une équipe peut être bien plus forte chez elle
+    // qu'en déplacement, ou l'inverse) — plus précis qu'une simple moyenne globale.
+    const lh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
+    const la=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
     const result={lh,la,parsed:null,source:'form'};
     fixtureOddsCache[fid]=result;
     return result;
