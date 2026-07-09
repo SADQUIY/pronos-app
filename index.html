@@ -687,6 +687,7 @@ async function getCalibratedModel(fixture) {
     // qu'en déplacement, ou l'inverse) — plus précis qu'une simple moyenne globale.
     const lh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
     const la=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
+    console.warn(`[pronos] Forme domicile/extérieur pour fixture ${fid} : ${home.name} à domicile (buts marqués ${homeForm.home.avgScored.toFixed(2)}/match sur ${homeForm.home.n} matchs, moyenne globale ${homeForm.avgScored.toFixed(2)}) | ${away.name} à l'extérieur (buts marqués ${awayForm.away.avgScored.toFixed(2)}/match sur ${awayForm.away.n} matchs, moyenne globale ${awayForm.avgScored.toFixed(2)})`);
     const result={lh,la,parsed:null,source:'form'};
     fixtureOddsCache[fid]=result;
     return result;
