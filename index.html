@@ -437,6 +437,18 @@ function findValueBets(modelProbs, odds1xbet, homeName, awayName, lh, la) {
     }
     if(p!==undefined) checkValue('1ère MT/2ème MT',fs.label,p,fs.odd);
   });
+  // Repli : marchés séparés "First Half Winner" / "Second Half Winner" (selon la compétition)
+  if(o.fh_home)checkValue('1ère MT - Résultat',`Victoire ${homeName}`,modelProbs.pFH_H,o.fh_home);
+  if(o.fh_draw)checkValue('1ère MT - Résultat','Match nul',modelProbs.pFH_D,o.fh_draw);
+  if(o.fh_away)checkValue('1ère MT - Résultat',`Victoire ${awayName}`,modelProbs.pFH_A,o.fh_away);
+  if(o.sh_home)checkValue('2ème MT - Résultat',`Victoire ${homeName}`,modelProbs.pSH_H,o.sh_home);
+  if(o.sh_draw)checkValue('2ème MT - Résultat','Match nul',modelProbs.pSH_D,o.sh_draw);
+  if(o.sh_away)checkValue('2ème MT - Résultat',`Victoire ${awayName}`,modelProbs.pSH_A,o.sh_away);
+  // "Clean Sheet" : l'équipe ne concède aucun but, peu importe le résultat du match
+  if(lh!==undefined&&la!==undefined){
+    if(o.cleanSheetHome)checkValue('Clean Sheet',`${homeName} : oui`,poissonProb(la,0),o.cleanSheetHome);
+    if(o.cleanSheetAway)checkValue('Clean Sheet',`${awayName} : oui`,poissonProb(lh,0),o.cleanSheetAway);
+  }
   const htftKeys={'1/1':`${homeName}/${homeName}`,'1/X':`${homeName}/Nul`,'X/X':'Nul/Nul','X/1':`Nul/${homeName}`,'X/2':`Nul/${awayName}`,'2/2':`${awayName}/${awayName}`,'2/X':`${awayName}/Nul`,'2/1':`${awayName}/${homeName}`,'1/2':`${homeName}/${awayName}`};
   Object.entries(htftKeys).forEach(([key,label])=>{if(o[`htft_${key}`])checkValue('HT-FT',label,modelProbs.htftMap[key]||0,o[`htft_${key}`]);});
   // "Total 1" / "Total 2" (buts d'une équipe précise, indépendamment de l'autre) : chaque équipe suit
@@ -504,9 +516,18 @@ function parseOdds1xbet(oddsData, homeName, awayName) {
     const odd=parseFloat(v.odd);
     return isNaN(odd)?null:{label:v.value,odd};
   }).filter(Boolean) : [];
-  if(fhshBet===undefined){
-    console.warn(`[pronos] Marché 'First Half/Second Half Result' introuvable pour ${homeName} vs ${awayName}. Marchés disponibles :`, (bk.bets||[]).map(b=>b.name).join(', '));
+  // Selon la compétition, 1xBet propose parfois 2 marchés séparés à la place du marché combiné :
+  // "First Half Winner" et "Second Half Winner" (chacun avec Home/Draw/Away).
+  if(!fhshBet){
+    result.fh_home=getBet('First Half Winner','Home');result.fh_draw=getBet('First Half Winner','Draw');result.fh_away=getBet('First Half Winner','Away');
+    result.sh_home=getBet('Second Half Winner','Home');result.sh_draw=getBet('Second Half Winner','Draw');result.sh_away=getBet('Second Half Winner','Away');
+    if(result.fh_home===null && result.sh_home===null){
+      console.warn(`[pronos] Marché 'First Half/Second Half Result' introuvable pour ${homeName} vs ${awayName}. Marchés disponibles :`, (bk.bets||[]).map(b=>b.name).join(', '));
+    }
   }
+  // "Clean Sheet - Home" / "Clean Sheet - Away" : l'équipe ne concède aucun but (peu importe le résultat)
+  result.cleanSheetHome=getBet('Clean Sheet - Home','Yes');
+  result.cleanSheetAway=getBet('Clean Sheet - Away','Yes');
   // "Total 1" / "Total 2" (buts d'une équipe précise, toutes lignes proposées par 1xBet)
   const parseTeamTotal=(marketName)=>{
     const bet=bk.bets?.find(b=>b.name===marketName);
@@ -738,7 +759,17 @@ function renderVBTrackerPanel(){
   const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
   const pending=tracker.filter(t=>!t.resolved);
   if(evaluated.length<10){
-    el.innerHTML=`<div class="debug-empty">Échantillon encore trop faible (${evaluated.length} pari${evaluated.length>1?'s':''} évalué${evaluated.length>1?'s':''} sur ${tracker.length} enregistré${tracker.length>1?'s':''}, ${pending.length} en attente). Continue à analyser des matchs avant-match avec value bets détectés.</div>`;
+    let pendingInfo='';
+    if(pending.length>0){
+      const earliest=pending.reduce((a,b)=>new Date(a.kickoff)<new Date(b.kickoff)?a:b);
+      const readyAt=new Date(new Date(earliest.kickoff).getTime()+2.5*3600*1000);
+      const now=new Date();
+      const diffMin=Math.round((readyAt-now)/60000);
+      pendingInfo = diffMin>0
+        ? `Le prochain pari pourra être vérifié dans environ ${diffMin<60?diffMin+' min':(diffMin/60).toFixed(1)+' h'} (${earliest.homeName} vs ${earliest.awayName}).`
+        : `Au moins un pari devrait déjà être vérifiable (${earliest.homeName} vs ${earliest.awayName}) — appuie sur "Vérifier les résultats".`;
+    }
+    el.innerHTML=`<div class="debug-empty">Échantillon encore trop faible (${evaluated.length} pari${evaluated.length>1?'s':''} évalué${evaluated.length>1?'s':''} sur ${tracker.length} enregistré${tracker.length>1?'s':''}, ${pending.length} en attente). ${pendingInfo}</div>`;
     return;
   }
   const global=computeROI(tracker);
