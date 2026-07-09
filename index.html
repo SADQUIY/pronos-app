@@ -755,6 +755,7 @@ async function showPredictions(fixture,container,btn) {
   btn.textContent="🔄 Analyse...";btn.disabled=true;
   try {
     const home=fixture.teams.home,away=fixture.teams.away;let html="";
+    console.warn(`[pronos] Analyse fixture ${fixture.fixture.id} : ${home.name} (id ${home.id}) vs ${away.name} (id ${away.id})`);
     if(live) {
       const elapsed=fixture.fixture.status.elapsed??45,remaining=Math.max(0,90-elapsed);
       const hG=fixture.goals.home??0,aG=fixture.goals.away??0;
@@ -1005,6 +1006,15 @@ async function loadFixtures(silent=false) {
   try {
     const [dateData,liveData]=await Promise.all([apiGet(`/fixtures?date=${todayISO()}`),apiGet(`/fixtures?live=all`).catch(()=>[])]);
     const lm={};(liveData||[]).forEach(f=>{lm[f.fixture.id]=f;});
+    // Vérifie que les 2 appels API s'accordent sur les noms d'équipes pour un même ID de match :
+    // si ce n'est pas le cas, c'est une incohérence dans les données de l'API elle-même (pas dans
+    // notre logique de fusion), utile à savoir pour diagnostiquer un futur cas de nom d'équipe erroné.
+    (dateData||[]).forEach(f=>{
+      const live=lm[f.fixture.id];
+      if(live && (live.teams.away.name!==f.teams.away.name || live.teams.home.name!==f.teams.home.name)){
+        console.warn(`[pronos] Incohérence API pour fixture ${f.fixture.id} : /fixtures?date= dit "${f.teams.home.name} vs ${f.teams.away.name}", /fixtures?live=all dit "${live.teams.home.name} vs ${live.teams.away.name}"`);
+      }
+    });
     const merged=(dateData||[]).map(f=>lm[f.fixture.id]||f);
     (liveData||[]).forEach(f=>{if(!merged.find(m=>m.fixture.id===f.fixture.id))merged.push(f);});
     allFixtures=merged.sort((a,b)=>new Date(a.fixture.date)-new Date(b.fixture.date));
