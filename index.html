@@ -137,6 +137,11 @@
       <button class="debug-panel-btn copy" onclick="refreshTrackerPanel()">Vérifier les résultats</button>
     </div>
     <div id="trackerPanel" class="debug-log-list" style="max-height:180px;margin-bottom:12px;"><div class="debug-empty">Chargement...</div></div>
+    <div class="debug-panel-header" style="margin-top:2px;">
+      <span class="debug-panel-title" style="font-size:13px;">💰 Rentabilité des value bets</span>
+      <button class="debug-panel-btn copy" onclick="refreshVBTrackerPanel()">Vérifier les résultats</button>
+    </div>
+    <div id="vbTrackerPanel" class="debug-log-list" style="max-height:180px;margin-bottom:12px;"><div class="debug-empty">Chargement...</div></div>
     <div id="debugLogList" class="debug-log-list"><div class="debug-empty">Aucun message pour l'instant. Ouvre un match (surtout en direct) et appuie sur "Analyser" : si quelque chose ne va pas, ça s'affichera ici.</div></div>
   </div>
 </div>
@@ -210,7 +215,7 @@ function renderDebugLog(){
 function toggleDebugPanel(){
   const panel=document.getElementById('debugPanel'); if(!panel) return;
   panel.classList.toggle('open');
-  if(panel.classList.contains('open')){ renderDebugLog(); debugUnread=0; updateDebugBadge(); renderTrackerPanel(); }
+  if(panel.classList.contains('open')){ renderDebugLog(); debugUnread=0; updateDebugBadge(); renderTrackerPanel(); renderVBTrackerPanel(); }
 }
 function clearDebugLog(){ debugLog=[]; renderDebugLog(); }
 async function copyDebugLog(){
@@ -405,6 +410,26 @@ function confidenceBarHTML(v) {
 // (API-Football ne garde les cotes que 7 jours après le coup d'envoi), donc on enregistre chaque
 // prédiction dès maintenant (cotes ET forme séparément) et on la compare au résultat réel une fois
 // le match terminé, pour savoir empiriquement quel ratio cotes/forme est le plus fiable.
+// --- Résultat final d'un match, mis en cache et partagé entre les différents suivis (évite de
+// refaire un appel API pour le même match si plusieurs trackers ont besoin du même résultat).
+const fixtureResultCache = {};
+async function getFixtureResult(fixtureId) {
+  if (Object.prototype.hasOwnProperty.call(fixtureResultCache, fixtureId)) return fixtureResultCache[fixtureId];
+  try {
+    const data = await apiGet(`/fixtures?id=${fixtureId}`);
+    const f = data && data[0];
+    if (!f || f.goals.home===null || f.goals.away===null || !DONE_STATUSES.includes(f.fixture.status.short)) {
+      fixtureResultCache[fixtureId]=null; return null;
+    }
+    const result = {home:f.goals.home, away:f.goals.away};
+    fixtureResultCache[fixtureId]=result;
+    return result;
+  } catch(e) {
+    console.warn(`[pronos] Résultat indisponible pour fixture ${fixtureId}:`, e.message);
+    return null;
+  }
+}
+
 const TRACKER_KEY='pronosTracker_v1';
 const RATIO_CANDIDATES=[1.0,0.85,0.7,0.5,0.3,0.15,0.0]; // poids sur les cotes (reste = poids sur la forme)
 function loadTracker(){ try{ return JSON.parse(localStorage.getItem(TRACKER_KEY)||'[]'); }catch(e){ return []; } }
@@ -431,15 +456,10 @@ async function evaluateTracker(){
     const kickoff=new Date(rec.kickoff);
     if(Date.now()-kickoff.getTime()<2.5*3600*1000) continue; // match probablement pas encore fini
     apiCalls++;
-    try{
-      const data=await apiGet(`/fixtures?id=${rec.fixtureId}`);
-      const f=data && data[0];
-      if(!f || f.goals.home===null || f.goals.away===null || !DONE_STATUSES.includes(f.fixture.status.short)) continue;
-      rec.actualResult = f.goals.home>f.goals.away?'H':f.goals.home===f.goals.away?'D':'A';
-      rec.resolved=true;
-    }catch(e){
-      console.warn(`[pronos] Vérification résultat impossible pour fixture ${rec.fixtureId}:`, e.message);
-    }
+    const result=await getFixtureResult(rec.fixtureId);
+    if(!result) continue;
+    rec.actualResult = result.home>result.away?'H':result.home===result.away?'D':'A';
+    rec.resolved=true;
   }
   saveTracker(tracker);
   return tracker;
@@ -478,6 +498,112 @@ async function refreshTrackerPanel(){
   if(el) el.innerHTML='<div class="debug-empty">Vérification des résultats en cours...</div>';
   await evaluateTracker();
   renderTrackerPanel();
+}
+
+// --- Suivi de rentabilité réelle des value bets détectés (pas juste la précision des probabilités).
+// On enregistre chaque value bet affiché (marché, pick, cote, edge), et une fois le match terminé,
+// on vérifie s'il aurait gagné pour calculer un ROI réel en mise plate (1 unité par pari).
+const VB_TRACKER_KEY='pronosValueBetTracker_v1';
+function loadVBTracker(){ try{ return JSON.parse(localStorage.getItem(VB_TRACKER_KEY)||'[]'); }catch(e){ return []; } }
+function saveVBTracker(arr){ try{ localStorage.setItem(VB_TRACKER_KEY, JSON.stringify(arr)); }catch(e){ console.warn('[pronos] Sauvegarde du suivi value bets impossible:', e.message); } }
+function recordValueBet(fixture, vb){
+  const tracker=loadVBTracker();
+  const key=`${fixture.fixture.id}|${vb.market}|${vb.pick}`;
+  if(tracker.find(t=>t.key===key)) return; // déjà enregistré
+  tracker.push({
+    key, fixtureId:fixture.fixture.id,
+    homeName:fixture.teams.home.name, awayName:fixture.teams.away.name,
+    kickoff:fixture.fixture.date,
+    market:vb.market, pick:vb.pick, odd:vb.odd, edge:vb.edge,
+    resolved:false, won:null
+  });
+  if(tracker.length>800) tracker.splice(0, tracker.length-800);
+  saveVBTracker(tracker);
+}
+// Détermine si un value bet aurait gagné, à partir du score final. Retourne null si le marché n'est
+// pas gérable de façon fiable ici (HT-FT, mi-temps, etc.) : ces paris ne sont alors pas comptés dans
+// le ROI plutôt que d'être évalués au hasard.
+function evaluateBetOutcome(vb, finalHome, finalAway, homeName, awayName){
+  const tot=finalHome+finalAway;
+  if(vb.market==='Résultat (1X2)'){
+    if(vb.pick===`Victoire ${homeName}`) return finalHome>finalAway;
+    if(vb.pick==='Match nul') return finalHome===finalAway;
+    if(vb.pick===`Victoire ${awayName}`) return finalAway>finalHome;
+  }
+  if(vb.market==='Double Chance'){
+    if(vb.pick===`${homeName} ou Nul`) return finalHome>=finalAway;
+    if(vb.pick===`${homeName} ou ${awayName}`) return finalHome!==finalAway;
+    if(vb.pick===`Nul ou ${awayName}`) return finalAway>=finalHome;
+  }
+  if(vb.market==='Total buts'){
+    const m=vb.pick.match(/(Over|Under) ([\d.]+)/);
+    if(m){ const line=parseFloat(m[2]); return m[1]==='Over' ? tot>line : tot<line; }
+  }
+  if(vb.market==='Les deux équipes marquent'){
+    const btts=finalHome>0 && finalAway>0;
+    return vb.pick==='Oui' ? btts : !btts;
+  }
+  if(vb.market===`${homeName} gagne sans encaisser`) return finalHome>finalAway && finalAway===0;
+  if(vb.market===`${awayName} gagne sans encaisser`) return finalAway>finalHome && finalHome===0;
+  return null;
+}
+async function evaluateVBTracker(){
+  const tracker=loadVBTracker();
+  const unresolved=tracker.filter(t=>!t.resolved);
+  let apiCalls=0;
+  for(const rec of unresolved){
+    if(apiCalls>=20) break;
+    const kickoff=new Date(rec.kickoff);
+    if(Date.now()-kickoff.getTime()<2.5*3600*1000) continue;
+    apiCalls++;
+    const result=await getFixtureResult(rec.fixtureId);
+    if(!result) continue;
+    const won=evaluateBetOutcome(rec, result.home, result.away, rec.homeName, rec.awayName);
+    if(won===null){ rec.resolved=true; rec.skipped=true; continue; } // marché non évaluable, exclu du ROI
+    rec.resolved=true; rec.won=won;
+  }
+  saveVBTracker(tracker);
+  return tracker;
+}
+function computeROI(tracker){
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
+  let staked=0, profit=0, wins=0;
+  evaluated.forEach(rec=>{
+    staked+=1;
+    profit += rec.won ? (rec.odd-1) : -1;
+    if(rec.won) wins++;
+  });
+  return {n:evaluated.length, staked, profit, roi:staked>0?profit/staked*100:null, winRate:evaluated.length>0?wins/evaluated.length*100:null};
+}
+function computeROIByEdgeTier(tracker){
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
+  const tiers=[{label:'🔥 +10%',test:e=>e>=10},{label:'⚡ +6-10%',test:e=>e>=6&&e<10},{label:'+3-6%',test:e=>e<6}];
+  return tiers.map(t=>{
+    const subset=evaluated.filter(r=>t.test(r.edge));
+    let profit=0; subset.forEach(r=>profit+=r.won?(r.odd-1):-1);
+    return {label:t.label, n:subset.length, roi:subset.length>0?profit/subset.length*100:null};
+  });
+}
+function renderVBTrackerPanel(){
+  const el=document.getElementById('vbTrackerPanel'); if(!el) return;
+  const tracker=loadVBTracker();
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
+  const pending=tracker.filter(t=>!t.resolved);
+  if(evaluated.length<10){
+    el.innerHTML=`<div class="debug-empty">Échantillon encore trop faible (${evaluated.length} pari${evaluated.length>1?'s':''} évalué${evaluated.length>1?'s':''} sur ${tracker.length} enregistré${tracker.length>1?'s':''}, ${pending.length} en attente). Continue à analyser des matchs avant-match avec value bets détectés.</div>`;
+    return;
+  }
+  const global=computeROI(tracker);
+  const byTier=computeROIByEdgeTier(tracker);
+  el.innerHTML=`<div style="font-size:11px;color:#8a9ab8;margin-bottom:8px;">${global.n} pari${global.n>1?'s':''} évalué${global.n>1?'s':''} (mise plate 1 unité/pari) · taux de réussite ${global.winRate.toFixed(0)}%</div>`+
+    `<div class="debug-log-entry${global.roi>0?' best':' err'}">ROI global : ${global.roi>=0?'+':''}${global.roi.toFixed(1)}% (n=${global.n})</div>`+
+    byTier.map(t=>`<div class="debug-log-entry">${t.label} → ROI ${t.roi!==null?(t.roi>=0?'+':'')+t.roi.toFixed(1)+'%':'—'} (n=${t.n})</div>`).join('');
+}
+async function refreshVBTrackerPanel(){
+  const el=document.getElementById('vbTrackerPanel');
+  if(el) el.innerHTML='<div class="debug-empty">Vérification des résultats en cours...</div>';
+  await evaluateVBTracker();
+  renderVBTrackerPanel();
 }
 
 async function getCalibratedModel(fixture) {
@@ -744,6 +870,7 @@ async function showPredictions(fixture,container,btn) {
         if(valueBets.length===0){
           html+=`<div class="no-odds">✅ Aucun value bet détecté.<br>Les cotes semblent correctement évaluées.</div>`;
         } else {
+          valueBets.forEach(vb=>recordValueBet(fixture, vb));
           html+=renderTopPick(valueBets[0]);
           const rest=valueBets.slice(1);
           if(rest.length>0){
