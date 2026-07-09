@@ -813,10 +813,18 @@ function renderTab(fixtures) {
   if(fixtures.length===0){ml.innerHTML=`<div class="empty-tab">Aucun match dans cet onglet.</div>`;return;}
   const bl={};
   fixtures.forEach(f=>{const k=`${f.league.id}`;if(!bl[k])bl[k]={id:k,name:f.league.name,country:f.league.country,fixtures:[]};bl[k].fixtures.push(f);});
-  Object.values(bl).sort((a,b)=>leaguePriority(a.name)-leaguePriority(b.name)).forEach(g=>{
-    const hl=g.fixtures.some(f=>isLive(f));
+  Object.values(bl).forEach(g=>{
+    g.hasLive=g.fixtures.some(f=>isLive(f));
+    g.earliest=Math.min(...g.fixtures.map(f=>new Date(f.fixture.date).getTime()));
+  });
+  // Les groupes avec un match en direct remontent en premier ; sinon, les matchs les plus proches
+  // dans le temps (coup d'envoi le plus proche) apparaissent en haut.
+  Object.values(bl).sort((a,b)=>{
+    if(a.hasLive!==b.hasLive) return a.hasLive?-1:1;
+    return a.earliest-b.earliest;
+  }).forEach(g=>{
     g.fixtures.sort((a,b)=>{const pa=isLive(a)?0:isUpcoming(a)?1:2,pb=isLive(b)?0:isUpcoming(b)?1:2;if(pa!==pb)return pa-pb;return new Date(a.fixture.date)-new Date(b.fixture.date);});
-    ml.appendChild(renderLeagueGroup(g.id,g.name,g.country,g.fixtures,hl));
+    ml.appendChild(renderLeagueGroup(g.id,g.name,g.country,g.fixtures,g.hasLive));
   });
   fn.innerHTML="🔥 +10% edge fort · ⚡ +6% solide · +3% léger. Joue avec prudence.";
   fn.className="footer-note";
