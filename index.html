@@ -858,26 +858,18 @@ function computeRemainingMarketProbs(hG, aG, lhRem, laRem) {
 // La structure exacte n'est pas garantie identique au pré-match : on tente de réutiliser le même
 // parseur (même schéma probable : bookmakers > bets > values), et on logue la réponse brute si ça échoue,
 // pour pouvoir ajuster le parseur si 1xBet/API-Football renvoie un format différent en live.
+// IMPORTANT : on a confirmé, via de vraies réponses de /odds/live, que cet endpoint ne contient
+// AUCUNE attribution de bookmaker (pas de champ "bookmakers", pas d'id) — juste un tableau "odds"
+// générique sur le match. Impossible de garantir que ce sont les cotes de 1xBet spécifiquement.
+// Comme on l'a établi (cf. bug du repli silencieux sur un autre bookmaker), on préfère ne PAS utiliser
+// ces cotes plutôt que de risquer d'afficher "vs 1xBet" sur des données non vérifiées.
+let liveOddsDisabledLogged=false;
 async function getLiveOdds1xbet(fixture) {
-  const fid = fixture.fixture.id;
-  const home=fixture.teams.home, away=fixture.teams.away;
-  let data=null;
-  try {
-    data = await apiGet(`/odds/live?fixture=${fid}`);
-  } catch(e) {
-    console.warn(`[pronos] /odds/live indisponible pour fixture ${fid} (${home.name} vs ${away.name}):`, e.message);
-    return null;
+  if(!liveOddsDisabledLogged){
+    liveOddsDisabledLogged=true;
+    console.warn(`[pronos] Cotes live désactivées : /odds/live ne fournit aucune attribution de bookmaker (confirmé sur données réelles), impossible de garantir que ce sont celles de 1xBet. Le mode "confiance du modèle" reste utilisé à la place.`);
   }
-  if (!data || data.length===0) {
-    console.warn(`[pronos] /odds/live vide pour fixture ${fid} (${home.name} vs ${away.name})`);
-    return null;
-  }
-  const parsed = parseOdds1xbet(data, home.name, away.name);
-  if (!parsed || !parsed.home1x2) {
-    console.warn(`[pronos] /odds/live : structure inattendue pour fixture ${fid}, réponse brute :`, JSON.stringify(data).slice(0,3000));
-    return null;
-  }
-  return parsed;
+  return null;
 }
 
 function findLiveValueBets(mp, liveOdds, homeName, awayName) {
