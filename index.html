@@ -649,8 +649,8 @@ async function showPredictions(fixture,container,btn) {
           {label:'Plus de 4.5 but (total)',p:mp.pO45},
           {label:'Plus de 5.5 but (total)',p:mp.pO55},
           {label:'Les deux équipes marquent',p:mp.pBTTS},
-          {label:`${home.name} marque encore`,p:mp.pHomeScores},
-          {label:`${away.name} marque encore`,p:mp.pAwayScores},
+          {label:`${home.name} ${hG>0?'marque encore':'marque'}`,p:mp.pHomeScores},
+          {label:`${away.name} ${aG>0?'marque encore':'marque'}`,p:mp.pAwayScores},
           {label:`${home.name} gagne sans encaisser`,p:mp.pWTNH},
           {label:`${away.name} gagne sans encaisser`,p:mp.pWTNA},
         ].filter(r=>isOpen(r.p));
