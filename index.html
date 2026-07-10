@@ -397,7 +397,11 @@ function findValueBets(modelProbs, odds1xbet, homeName, awayName, lh, la) {
   function checkValue(market,pick,modelProb,odd1xbet){
     if(!odd1xbet||odd1xbet<=1)return;
     const impliedProb=oddsToProb(odd1xbet), edge=modelProb-impliedProb;
-    if(edge>0.03){
+    // Seuil relevé à 8% spécifiquement pour "Total buts" : le suivi ROI a montré, sur un échantillon
+    // de 67 paris, un ROI de -14.1% (et -51.5% dans la tranche 6-10%) pour ce marché précis, alors que
+    // les autres marchés restent au seuil normal de 3% (BTTS +25.7%, Double Chance +19.3% sur le même suivi).
+    const threshold = market==='Total buts' ? 0.08 : 0.03;
+    if(edge>threshold){
       // On arrondit modèle et implicite d'abord, puis on calcule l'edge affiché à partir de ces
       // valeurs arrondies, pour que le badge corresponde toujours exactement à Modèle - Implicite.
       const mp100=Math.round(modelProb*100), ip100=Math.round(impliedProb*100);
@@ -1009,7 +1013,8 @@ function findLiveValueBets(mp, liveOdds, homeName, awayName) {
   function checkValue(market,pick,modelProb,odd){
     if(!odd||odd<=1||modelProb===undefined)return;
     const impliedProb=oddsToProb(odd), edge=modelProb-impliedProb;
-    if(edge>0.03){
+    const threshold = market==='Total buts' ? 0.08 : 0.03; // même ajustement qu'en pré-match (cf. suivi ROI)
+    if(edge>threshold){
       const mp100=Math.round(modelProb*100), ip100=Math.round(impliedProb*100);
       valueBets.push({market,pick,modelProb:mp100,impliedProb:ip100,odd,edge:mp100-ip100});
     }
