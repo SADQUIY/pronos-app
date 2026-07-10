@@ -767,7 +767,11 @@ function renderVBTrackerPanel(){
   const el=document.getElementById('vbTrackerPanel'); if(!el) return;
   const tracker=loadVBTracker();
   const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
+  const skipped=tracker.filter(t=>t.resolved && t.skipped);
   const pending=tracker.filter(t=>!t.resolved);
+  const skippedNote = skipped.length>0
+    ? `<div style="font-size:11px;color:#b08900;margin-bottom:8px;">⚠️ ${skipped.length} pari${skipped.length>1?'s':''} enregistré${skipped.length>1?'s':''} sur un marché qu'on ne sait pas vérifier automatiquement (Handicap, Score exact, Clean Sheet, HT-FT, 1ère/2ème MT...) — exclu${skipped.length>1?'s':''} du calcul ci-dessous, donc ce ROI ne couvre qu'une partie de ce que tu as pu jouer réellement.</div>`
+    : '';
   if(evaluated.length<10){
     let pendingInfo='';
     if(pending.length>0){
@@ -779,12 +783,12 @@ function renderVBTrackerPanel(){
         ? `Le prochain pari pourra être vérifié dans environ ${diffMin<60?diffMin+' min':(diffMin/60).toFixed(1)+' h'} (${earliest.homeName} vs ${earliest.awayName}).`
         : `Au moins un pari devrait déjà être vérifiable (${earliest.homeName} vs ${earliest.awayName}) — appuie sur "Vérifier les résultats".`;
     }
-    el.innerHTML=`<div class="debug-empty">Échantillon encore trop faible (${evaluated.length} pari${evaluated.length>1?'s':''} évalué${evaluated.length>1?'s':''} sur ${tracker.length} enregistré${tracker.length>1?'s':''}, ${pending.length} en attente). ${pendingInfo}</div>`;
+    el.innerHTML=skippedNote+`<div class="debug-empty">Échantillon encore trop faible (${evaluated.length} pari${evaluated.length>1?'s':''} évalué${evaluated.length>1?'s':''} sur ${tracker.length} enregistré${tracker.length>1?'s':''}, ${pending.length} en attente). ${pendingInfo}</div>`;
     return;
   }
   const global=computeROI(tracker);
   const byTier=computeROIByEdgeTier(tracker);
-  el.innerHTML=`<div style="font-size:11px;color:#8a9ab8;margin-bottom:8px;">${global.n} pari${global.n>1?'s':''} évalué${global.n>1?'s':''} (mise plate 1 unité/pari) · taux de réussite ${global.winRate.toFixed(0)}%</div>`+
+  el.innerHTML=skippedNote+`<div style="font-size:11px;color:#8a9ab8;margin-bottom:8px;">${global.n} pari${global.n>1?'s':''} évalué${global.n>1?'s':''} (mise plate 1 unité/pari) · taux de réussite ${global.winRate.toFixed(0)}%</div>`+
     `<div class="debug-log-entry${global.roi>0?' best':' err'}">ROI global : ${global.roi>=0?'+':''}${global.roi.toFixed(1)}% (n=${global.n})</div>`+
     byTier.map(t=>`<div class="debug-log-entry">${t.label} → ROI ${t.roi!==null?(t.roi>=0?'+':'')+t.roi.toFixed(1)+'%':'—'} (n=${t.n})</div>`).join('');
 }
