@@ -768,6 +768,21 @@ function computeROIByEdgeTier(tracker){
     return {label:t.label, n:subset.length, roi:subset.length>0?profit/subset.length*100:null};
   });
 }
+// Répartition par marché (toutes tranches d'edge confondues) : permet de voir si un marché précis
+// (ex: Double Chance, BTTS...) tire la performance vers le bas, plutôt qu'un problème général.
+function computeROIByMarket(tracker, edgeFilter){
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped && (!edgeFilter || edgeFilter(t.edge)));
+  const byMarket={};
+  evaluated.forEach(r=>{
+    if(!byMarket[r.market]) byMarket[r.market]={n:0, profit:0};
+    byMarket[r.market].n++;
+    byMarket[r.market].profit += r.won ? (r.odd-1) : -1;
+  });
+  return Object.entries(byMarket)
+    .map(([market,d])=>({market, n:d.n, roi:d.n>0?d.profit/d.n*100:null}))
+    .filter(m=>m.n>=3) // on ignore les marchés avec trop peu de paris pour être lisibles
+    .sort((a,b)=>a.roi-b.roi); // les pires en premier
+}
 function renderVBTrackerPanel(){
   const el=document.getElementById('vbTrackerPanel'); if(!el) return;
   const tracker=loadVBTracker();
@@ -795,7 +810,21 @@ function renderVBTrackerPanel(){
   const byTier=computeROIByEdgeTier(tracker);
   el.innerHTML=skippedNote+`<div style="font-size:11px;color:#8a9ab8;margin-bottom:8px;">${global.n} pari${global.n>1?'s':''} évalué${global.n>1?'s':''} (mise plate 1 unité/pari) · taux de réussite ${global.winRate.toFixed(0)}%</div>`+
     `<div class="debug-log-entry${global.roi>0?' best':' err'}">ROI global : ${global.roi>=0?'+':''}${global.roi.toFixed(1)}% (n=${global.n})</div>`+
-    byTier.map(t=>`<div class="debug-log-entry">${t.label} → ROI ${t.roi!==null?(t.roi>=0?'+':'')+t.roi.toFixed(1)+'%':'—'} (n=${t.n})</div>`).join('');
+    byTier.map(t=>`<div class="debug-log-entry">${t.label} → ROI ${t.roi!==null?(t.roi>=0?'+':'')+t.roi.toFixed(1)+'%':'—'} (n=${t.n})</div>`).join('')+
+    (()=>{
+      const byMarket=computeROIByMarket(tracker);
+      const byMarketMidTier=computeROIByMarket(tracker, e=>e>=6&&e<10);
+      let extra='';
+      if(byMarket.length>0){
+        extra+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Par marché (tous edges)</div>`+
+          byMarket.map(m=>`<div class="debug-log-entry${m.roi<0?' err':' best'}">${m.market} → ROI ${m.roi>=0?'+':''}${m.roi.toFixed(1)}% (n=${m.n})</div>`).join('');
+      }
+      if(byMarketMidTier.length>0){
+        extra+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Par marché, dans la tranche ⚡ +6-10% seulement</div>`+
+          byMarketMidTier.map(m=>`<div class="debug-log-entry${m.roi<0?' err':' best'}">${m.market} → ROI ${m.roi>=0?'+':''}${m.roi.toFixed(1)}% (n=${m.n})</div>`).join('');
+      }
+      return extra;
+    })();
 }
 async function refreshVBTrackerPanel(){
   const el=document.getElementById('vbTrackerPanel');
