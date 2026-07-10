@@ -723,8 +723,16 @@ async function refreshTrackerPanel(){
 // On enregistre chaque value bet affiché (marché, pick, cote, edge), et une fois le match terminé,
 // on vérifie s'il aurait gagné pour calculer un ROI réel en mise plate (1 unité par pari).
 const VB_TRACKER_KEY='pronosValueBetTracker_v1';
+// Identifiant de la méthode de calibration en vigueur au moment où le pari est enregistré. À
+// incrémenter à chaque changement de calibration qui peut changer les probabilités du modèle (ex:
+// ajout de la contrainte Over/Under ci-dessous), pour pouvoir comparer le ROI "avant/après" dans le
+// tracker sans que les anciens paris (autre méthode) diluent silencieusement le résultat.
+const CALIBRATION_VERSION='v2_joint_ou';
 function loadVBTracker(){ try{ return JSON.parse(localStorage.getItem(VB_TRACKER_KEY)||'[]'); }catch(e){ return []; } }
 function saveVBTracker(arr){ try{ localStorage.setItem(VB_TRACKER_KEY, JSON.stringify(arr)); }catch(e){ console.warn('[pronos] Sauvegarde du suivi value bets impossible:', e.message); } }
+// Les paris enregistrés avant l'introduction de ce champ n'ont pas de calibVersion : on les traite
+// comme 'v1_1x2_only' (l'unique méthode qui existait alors : lambdas calibrés sur le 1X2 seul).
+function getCalibVersion(rec){ return rec.calibVersion || 'v1_1x2_only'; }
 function recordValueBet(fixture, vb){
   const tracker=loadVBTracker();
   const key=`${fixture.fixture.id}|${vb.market}|${vb.pick}`;
@@ -734,6 +742,7 @@ function recordValueBet(fixture, vb){
     homeName:fixture.teams.home.name, awayName:fixture.teams.away.name,
     kickoff:fixture.fixture.date,
     market:vb.market, pick:vb.pick, odd:vb.odd, edge:vb.edge,
+    calibVersion:CALIBRATION_VERSION,
     resolved:false, won:null
   });
   if(tracker.length>800) tracker.splice(0, tracker.length-800);
@@ -794,6 +803,20 @@ function computeROI(tracker){
   });
   return {n:evaluated.length, staked, profit, roi:staked>0?profit/staked*100:null, winRate:evaluated.length>0?wins/evaluated.length*100:null};
 }
+// Compare le ROI "avant/après" un changement de méthode de calibration (cf. CALIBRATION_VERSION),
+// pour vérifier qu'une correction améliore réellement les résultats plutôt que de se fier à une
+// moyenne globale qui mélangerait silencieusement l'ancienne et la nouvelle méthode.
+function computeROIByVersion(tracker){
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
+  const byVersion={};
+  evaluated.forEach(r=>{
+    const v=getCalibVersion(r);
+    if(!byVersion[v]) byVersion[v]={n:0, profit:0};
+    byVersion[v].n++;
+    byVersion[v].profit += r.won ? (r.odd-1) : -1;
+  });
+  return Object.entries(byVersion).map(([version,d])=>({version, n:d.n, roi:d.n>0?d.profit/d.n*100:null}));
+}
 function computeROIByEdgeTier(tracker){
   const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
   const tiers=[{label:'🔥 +10%',test:e=>e>=10},{label:'⚡ +6-10%',test:e=>e>=6&&e<10},{label:'+3-6%',test:e=>e<6}];
@@ -842,24 +865,36 @@ function renderVBTrackerPanel(){
     return;
   }
   const global=computeROI(tracker);
-  const byTier=computeROIByEdgeTier(tracker);
+  const byVersion=computeROIByVersion(tracker);
+  // Le détail par tranche d'edge / par marché ci-dessous ne porte que sur les paris enregistrés avec
+  // la calibration ACTUELLE (CALIBRATION_VERSION) : mélanger avec l'ancienne méthode masquerait
+  // justement l'effet d'une correction comme celle du fit joint 1X2+Over/Under.
+  const currentTracker=tracker.filter(t=>getCalibVersion(t)===CALIBRATION_VERSION);
+  const versionNote = byVersion.length>1
+    ? `<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:2px 0 4px;">Par version de calibration</div>`+
+      byVersion.map(v=>`<div class="debug-log-entry${v.roi<0?' err':' best'}">${v.version}${v.version===CALIBRATION_VERSION?' (actuelle)':''} → ROI ${v.roi>=0?'+':''}${v.roi.toFixed(1)}% (n=${v.n})</div>`).join('')
+    : '';
   el.innerHTML=skippedNote+`<div style="font-size:11px;color:#8a9ab8;margin-bottom:8px;">${global.n} pari${global.n>1?'s':''} évalué${global.n>1?'s':''} (mise plate 1 unité/pari) · taux de réussite ${global.winRate.toFixed(0)}%</div>`+
-    `<div class="debug-log-entry${global.roi>0?' best':' err'}">ROI global : ${global.roi>=0?'+':''}${global.roi.toFixed(1)}% (n=${global.n})</div>`+
-    byTier.map(t=>`<div class="debug-log-entry">${t.label} → ROI ${t.roi!==null?(t.roi>=0?'+':'')+t.roi.toFixed(1)+'%':'—'} (n=${t.n})</div>`).join('')+
-    (()=>{
-      const byMarket=computeROIByMarket(tracker);
-      const byMarketMidTier=computeROIByMarket(tracker, e=>e>=6&&e<10);
-      let extra='';
-      if(byMarket.length>0){
-        extra+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Par marché (tous edges)</div>`+
-          byMarket.map(m=>`<div class="debug-log-entry${m.roi<0?' err':' best'}">${m.market} → ROI ${m.roi>=0?'+':''}${m.roi.toFixed(1)}% (n=${m.n})</div>`).join('');
-      }
-      if(byMarketMidTier.length>0){
-        extra+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Par marché, dans la tranche ⚡ +6-10% seulement</div>`+
-          byMarketMidTier.map(m=>`<div class="debug-log-entry${m.roi<0?' err':' best'}">${m.market} → ROI ${m.roi>=0?'+':''}${m.roi.toFixed(1)}% (n=${m.n})</div>`).join('');
-      }
-      return extra;
-    })();
+    `<div class="debug-log-entry${global.roi>0?' best':' err'}">ROI global (toutes versions) : ${global.roi>=0?'+':''}${global.roi.toFixed(1)}% (n=${global.n})</div>`+
+    versionNote+
+    (currentTracker.filter(t=>t.resolved&&!t.skipped).length<10
+      ? `<div class="debug-empty" style="margin-top:8px;">Détail par tranche/marché pour la calibration actuelle : encore trop peu de paris évalués (${currentTracker.filter(t=>t.resolved&&!t.skipped).length}).</div>`
+      : `<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Détail — calibration actuelle uniquement</div>`+
+        computeROIByEdgeTier(currentTracker).map(t=>`<div class="debug-log-entry">${t.label} → ROI ${t.roi!==null?(t.roi>=0?'+':'')+t.roi.toFixed(1)+'%':'—'} (n=${t.n})</div>`).join('')+
+        (()=>{
+          const byMarket=computeROIByMarket(currentTracker);
+          const byMarketMidTier=computeROIByMarket(currentTracker, e=>e>=6&&e<10);
+          let extra='';
+          if(byMarket.length>0){
+            extra+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Par marché (tous edges)</div>`+
+              byMarket.map(m=>`<div class="debug-log-entry${m.roi<0?' err':' best'}">${m.market} → ROI ${m.roi>=0?'+':''}${m.roi.toFixed(1)}% (n=${m.n})</div>`).join('');
+          }
+          if(byMarketMidTier.length>0){
+            extra+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Par marché, dans la tranche ⚡ +6-10% seulement</div>`+
+              byMarketMidTier.map(m=>`<div class="debug-log-entry${m.roi<0?' err':' best'}">${m.market} → ROI ${m.roi>=0?'+':''}${m.roi.toFixed(1)}% (n=${m.n})</div>`).join('');
+          }
+          return extra;
+        })());
 }
 async function refreshVBTrackerPanel(){
   const el=document.getElementById('vbTrackerPanel');
