@@ -913,11 +913,19 @@ function findLiveValueBets(mp, liveOdds, homeName, awayName) {
 
 async function showPredictions(fixture,container,btn) {
   const live=isLive(fixture);
-  if(!live&&container.dataset.loaded==="true"){
+  const state=matchUIState[fixture.fixture.id];
+  const staleAnalysis = state && state.computedAt && (Date.now()-state.computedAt) > 5*60*1000;
+  if(!live&&container.dataset.loaded==="true"&&!staleAnalysis){
     container.style.display=container.style.display==="none"?"block":"none";
     btn.textContent=container.style.display==="none"?"👁 Analyser":"🙈 Masquer";
     if(matchUIState[fixture.fixture.id]) matchUIState[fixture.fixture.id].expanded = container.style.display!=="none";
     return;
+  }
+  if(!live&&staleAnalysis){
+    // Les cotes ont pu changer depuis (apparition d'un marché, cote mise à jour...) : on efface le
+    // cache et on relance un vrai calcul au lieu de réafficher un résultat potentiellement périmé.
+    delete fixtureOddsCache[fixture.fixture.id];
+    container.dataset.loaded="false";
   }
   btn.textContent="🔄 Analyse...";btn.disabled=true;
   try {
@@ -1080,7 +1088,7 @@ async function showPredictions(fixture,container,btn) {
     btn.textContent=live?"🔄 Recalculer":"🙈 Masquer";
     btn.className=live?"pred-btn live-btn":"pred-btn";
     // Sauvegarde l'état pour survivre au rafraîchissement auto (toutes les 2 min)
-    matchUIState[fixture.fixture.id] = {expanded:true, html, btnLabel:btn.textContent, btnClass:btn.className};
+    matchUIState[fixture.fixture.id] = {expanded:true, html, btnLabel:btn.textContent, btnClass:btn.className, computedAt:Date.now()};
   } catch(e) {
     container.innerHTML=`<div style="color:#9b2c2c;font-size:12px;">⚠️ Erreur : ${e.message}</div>`;
     container.style.display="block";btn.textContent="👁 Analyser";
