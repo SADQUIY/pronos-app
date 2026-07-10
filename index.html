@@ -454,6 +454,15 @@ function findValueBets(modelProbs, odds1xbet, homeName, awayName, lh, la) {
   if(o.under25)checkValue('Total buts','Under 2.5',1-modelProbs.pO25,o.under25);
   if(o.over35)checkValue('Total buts','Over 3.5',modelProbs.pO35,o.over35);
   if(o.under35)checkValue('Total buts','Under 3.5',1-modelProbs.pO35,o.under35);
+  // Log de diagnostic indépendant du seuil de value bet : permet de vérifier dans le Journal
+  // technique que le fit joint 1X2+Over/Under fait bien converger la proba du modèle vers celle du
+  // marché sur "Total buts" (petit écart attendu), plutôt que de simplement supprimer les value bets
+  // sans qu'on sache si c'est parce que le modèle est enfin d'accord avec 1xBet ou parce qu'un bug
+  // renvoie des probabilités par défaut/aberrantes.
+  if(o.over25){
+    const impliedO25=oddsToProb(o.over25), ecart=(modelProbs.pO25-impliedO25)*100;
+    console.warn(`[pronos] Diag Total buts (Over 2.5) ${homeName} vs ${awayName} : modèle=${(modelProbs.pO25*100).toFixed(1)}% marché=${(impliedO25*100).toFixed(1)}% écart=${ecart>=0?'+':''}${ecart.toFixed(1)}pts`);
+  }
   if(o.bttsYes)checkValue('Les deux équipes marquent','Oui',modelProbs.pBTTS,o.bttsYes);
   if(o.bttsNo)checkValue('Les deux équipes marquent','Non',1-modelProbs.pBTTS,o.bttsNo);
   if(o.wtnHome)checkValue(`${homeName} gagne sans encaisser`,'Oui',modelProbs.pWTNH,o.wtnHome);
