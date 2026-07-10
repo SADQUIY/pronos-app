@@ -142,6 +142,11 @@
       <button class="debug-panel-btn copy" onclick="refreshVBTrackerPanel()">Vérifier les résultats</button>
     </div>
     <div id="vbTrackerPanel" class="debug-log-list" style="max-height:180px;margin-bottom:12px;"><div class="debug-empty">Chargement...</div></div>
+    <div class="debug-panel-header" style="margin-top:2px;">
+      <span class="debug-panel-title" style="font-size:13px;">⏩ Rattrapage historique</span>
+      <button class="debug-panel-btn copy" onclick="refreshBackfillPanel()">Lancer</button>
+    </div>
+    <div id="backfillPanel" class="debug-log-list" style="max-height:120px;margin-bottom:12px;"><div class="debug-empty">Analyse des matchs déjà terminés des 5 derniers jours (cotes encore disponibles ~7 jours), résolus immédiatement puisque le résultat est déjà connu. Utilise du quota API (jusqu'à ~40 matchs par lancement).</div></div>
     <div id="debugLogList" class="debug-log-list"><div class="debug-empty">Aucun message pour l'instant. Ouvre un match (surtout en direct) et appuie sur "Analyser" : si quelque chose ne va pas, ça s'affichera ici.</div></div>
   </div>
 </div>
@@ -796,6 +801,83 @@ async function refreshVBTrackerPanel(){
   const el=document.getElementById('vbTrackerPanel');
   if(el) el.innerHTML='<div class="debug-empty">Vérification des résultats en cours...</div>';
   await evaluateVBTracker();
+  renderVBTrackerPanel();
+}
+
+// --- Rattrapage historique : les cotes 1xBet restent disponibles ~7 jours après un match terminé.
+// Au lieu d'attendre que de nouveaux matchs se jouent un par un, on va chercher des matchs des
+// derniers jours DÉJÀ TERMINÉS, on calcule les value bets sur leurs cotes (encore accessibles), et on
+// vérifie tout de suite puisque le résultat est déjà connu — ça remplit les 2 trackers d'un coup.
+function resolveValueBetNow(fixture, vb) {
+  const tracker = loadVBTracker();
+  const key = `${fixture.fixture.id}|${vb.market}|${vb.pick}`;
+  if (tracker.find(t=>t.key===key)) return false;
+  const won = evaluateBetOutcome(vb, fixture.goals.home, fixture.goals.away, fixture.teams.home.name, fixture.teams.away.name);
+  tracker.push({
+    key, fixtureId:fixture.fixture.id,
+    homeName:fixture.teams.home.name, awayName:fixture.teams.away.name,
+    kickoff:fixture.fixture.date,
+    market:vb.market, pick:vb.pick, odd:vb.odd, edge:vb.edge,
+    resolved:true, won:won===null?null:won, skipped:won===null
+  });
+  if(tracker.length>800) tracker.splice(0, tracker.length-800);
+  saveVBTracker(tracker);
+  return true;
+}
+function resolvePredictionNow(fixture) {
+  const tracker = loadTracker();
+  const rec = tracker.find(t=>t.fixtureId===fixture.fixture.id && !t.resolved);
+  if (!rec) return;
+  rec.actualResult = fixture.goals.home>fixture.goals.away?'H':fixture.goals.home===fixture.goals.away?'D':'A';
+  rec.resolved = true;
+  saveTracker(tracker);
+}
+let backfillRunning=false;
+async function runHistoricalBackfill(daysBack=5, maxFixtures=40){
+  if(backfillRunning) return {aborted:true};
+  backfillRunning=true;
+  const el=document.getElementById('backfillPanel');
+  let checked=0, valueBetsFound=0, apiCalls=0;
+  try{
+    for(let d=1; d<=daysBack; d++){
+      if(checked>=maxFixtures) break;
+      const date=new Date(Date.now()-d*24*3600*1000);
+      const dateStr=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+      let fixtures=null;
+      try{
+        fixtures=await apiGet(`/fixtures?date=${dateStr}`);
+        apiCalls++;
+      }catch(e){
+        console.warn(`[pronos] Rattrapage : erreur fixtures du ${dateStr}:`, e.message);
+        continue;
+      }
+      const finished=(fixtures||[]).filter(f=>DONE_STATUSES.includes(f.fixture.status.short) && f.goals.home!==null);
+      for(const fixture of finished){
+        if(checked>=maxFixtures) break;
+        checked++;
+        if(el) el.innerHTML=`<div class="debug-empty">Rattrapage en cours... ${checked} match${checked>1?'s':''} vérifié${checked>1?'s':''} (${valueBetsFound} value bet${valueBetsFound>1?'s':''} trouvé${valueBetsFound>1?'s':''})</div>`;
+        const cal=await getCalibratedModel(fixture); // enregistre aussi la prédiction Brier au passage si cotes+forme dispo
+        resolvePredictionNow(fixture);
+        if(!cal || !cal.parsed) continue; // pas de cotes 1xBet : rien à évaluer pour le ROI ici
+        const modelProbs=computeModelProbabilities(cal.lh,cal.la);
+        const valueBets=findValueBets(modelProbs,cal.parsed,fixture.teams.home.name,fixture.teams.away.name,cal.lh,cal.la);
+        valueBets.forEach(vb=>{ if(resolveValueBetNow(fixture,vb)) valueBetsFound++; });
+      }
+    }
+  } finally {
+    backfillRunning=false;
+  }
+  return {checked, valueBetsFound, apiCalls};
+}
+async function refreshBackfillPanel(){
+  const el=document.getElementById('backfillPanel');
+  if(el) el.innerHTML='<div class="debug-empty">Rattrapage en cours...</div>';
+  const res=await runHistoricalBackfill();
+  if(el){
+    if(res.aborted){ el.innerHTML='<div class="debug-empty">Un rattrapage est déjà en cours.</div>'; }
+    else el.innerHTML=`<div class="debug-empty">Terminé : ${res.checked} match${res.checked>1?'s':''} des derniers jours vérifié${res.checked>1?'s':''}, ${res.valueBetsFound} value bet${res.valueBetsFound>1?'s':''} trouvé${res.valueBetsFound>1?'s':''} et résolu${res.valueBetsFound>1?'s':''} immédiatement. Relance "Vérifier les résultats" ci-dessus pour voir le nouveau ROI.</div>`;
+  }
+  renderTrackerPanel();
   renderVBTrackerPanel();
 }
 
