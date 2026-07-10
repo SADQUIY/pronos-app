@@ -917,6 +917,7 @@ function resolveValueBetNow(fixture, vb) {
     homeName:fixture.teams.home.name, awayName:fixture.teams.away.name,
     kickoff:fixture.fixture.date,
     market:vb.market, pick:vb.pick, odd:vb.odd, edge:vb.edge,
+    calibVersion:CALIBRATION_VERSION,
     resolved:true, won:won===null?null:won, skipped:won===null
   });
   if(tracker.length>800) tracker.splice(0, tracker.length-800);
