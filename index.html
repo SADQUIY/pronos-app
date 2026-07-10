@@ -833,11 +833,15 @@ function resolvePredictionNow(fixture) {
   saveTracker(tracker);
 }
 let backfillRunning=false;
-async function runHistoricalBackfill(daysBack=5, maxFixtures=40){
+const BACKFILL_SEEN_KEY='pronosBackfillSeen_v1';
+function loadBackfillSeen(){ try{ return new Set(JSON.parse(localStorage.getItem(BACKFILL_SEEN_KEY)||'[]')); }catch(e){ return new Set(); } }
+function saveBackfillSeen(set){ try{ localStorage.setItem(BACKFILL_SEEN_KEY, JSON.stringify([...set])); }catch(e){ console.warn('[pronos] Sauvegarde backfillSeen impossible:', e.message); } }
+async function runHistoricalBackfill(daysBack=7, maxFixtures=40){
   if(backfillRunning) return {aborted:true};
   backfillRunning=true;
   const el=document.getElementById('backfillPanel');
-  let checked=0, valueBetsFound=0, apiCalls=0;
+  const seen=loadBackfillSeen();
+  let checked=0, valueBetsFound=0, apiCalls=0, skippedAlreadySeen=0;
   try{
     for(let d=1; d<=daysBack; d++){
       if(checked>=maxFixtures) break;
@@ -854,7 +858,9 @@ async function runHistoricalBackfill(daysBack=5, maxFixtures=40){
       const finished=(fixtures||[]).filter(f=>DONE_STATUSES.includes(f.fixture.status.short) && f.goals.home!==null);
       for(const fixture of finished){
         if(checked>=maxFixtures) break;
+        if(seen.has(fixture.fixture.id)){ skippedAlreadySeen++; continue; } // déjà traité lors d'un rattrapage précédent
         checked++;
+        seen.add(fixture.fixture.id);
         if(el) el.innerHTML=`<div class="debug-empty">Rattrapage en cours... ${checked} match${checked>1?'s':''} vérifié${checked>1?'s':''} (${valueBetsFound} value bet${valueBetsFound>1?'s':''} trouvé${valueBetsFound>1?'s':''})</div>`;
         const cal=await getCalibratedModel(fixture); // enregistre aussi la prédiction Brier au passage si cotes+forme dispo
         resolvePredictionNow(fixture);
@@ -865,9 +871,10 @@ async function runHistoricalBackfill(daysBack=5, maxFixtures=40){
       }
     }
   } finally {
+    saveBackfillSeen(seen);
     backfillRunning=false;
   }
-  return {checked, valueBetsFound, apiCalls};
+  return {checked, valueBetsFound, apiCalls, skippedAlreadySeen};
 }
 async function refreshBackfillPanel(){
   const el=document.getElementById('backfillPanel');
@@ -875,7 +882,7 @@ async function refreshBackfillPanel(){
   const res=await runHistoricalBackfill();
   if(el){
     if(res.aborted){ el.innerHTML='<div class="debug-empty">Un rattrapage est déjà en cours.</div>'; }
-    else el.innerHTML=`<div class="debug-empty">Terminé : ${res.checked} match${res.checked>1?'s':''} des derniers jours vérifié${res.checked>1?'s':''}, ${res.valueBetsFound} value bet${res.valueBetsFound>1?'s':''} trouvé${res.valueBetsFound>1?'s':''} et résolu${res.valueBetsFound>1?'s':''} immédiatement. Relance "Vérifier les résultats" ci-dessus pour voir le nouveau ROI.</div>`;
+    else el.innerHTML=`<div class="debug-empty">Terminé : ${res.checked} nouveau${res.checked>1?'x':''} match${res.checked>1?'s':''} vérifié${res.checked>1?'s':''}${res.skippedAlreadySeen>0?` (+ ${res.skippedAlreadySeen} déjà vus, ignorés)`:''}, ${res.valueBetsFound} value bet${res.valueBetsFound>1?'s':''} trouvé${res.valueBetsFound>1?'s':''} et résolu${res.valueBetsFound>1?'s':''} immédiatement. Relance "Vérifier les résultats" ci-dessus pour voir le nouveau ROI.</div>`;
   }
   renderTrackerPanel();
   renderVBTrackerPanel();
