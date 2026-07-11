@@ -20,6 +20,8 @@
   .status { text-align: center; margin-top: 60px; color: #8a8478; font-size: 14px; }
   .error-box { background: #fdf0ef; border: 1px solid #f3c9c5; border-radius: 10px; padding: 12px; margin-bottom: 16px; font-size: 13px; color: #9b2c2c; }
   .refresh-btn { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; background: none; border: none; color: #8a8478; font-size: 12px; cursor: pointer; padding: 0; }
+  .match-search { width: 100%; box-sizing: border-box; padding: 10px 14px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; }
+  .load-more-btn { display: block; width: 100%; padding: 12px; margin: 8px 0 16px; background: #eef2f9; border: none; border-radius: 10px; color: #1a3a6b; font-weight: 700; font-size: 13px; }
   .league-group { margin-bottom: 8px; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
   .league-header { display: flex; align-items: center; gap: 10px; background: #fff; padding: 11px 14px; cursor: pointer; border-bottom: 1px solid #eee; }
   .league-header.live-header { background: #fff8f8; }
@@ -65,6 +67,16 @@
   .value-badge.mid { background: #fff3cd; color: #856404; }
   .value-badge.low { background: #e8ecf4; color: #4a6090; }
   .no-odds { font-size: 12px; color: #8a9ab8; text-align: center; padding: 16px 0; line-height: 1.6; }
+  .top-pick { border-radius: 12px; padding: 14px 16px; margin-bottom: 12px; background: linear-gradient(135deg, #1a3a6b, #2c5aa0); color: #fff; box-shadow: 0 2px 8px rgba(26,58,107,0.25); }
+  .top-pick-label { font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.85; margin-bottom: 6px; }
+  .top-pick-market { font-size: 11px; opacity: 0.75; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 2px; }
+  .top-pick-pick { font-size: 19px; font-weight: 800; margin-bottom: 10px; }
+  .top-pick-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+  .top-pick-odds { font-size: 12px; opacity: 0.9; }
+  .top-pick-odds b { opacity: 1; }
+  .top-pick-badge { font-size: 13px; font-weight: 800; background: rgba(255,255,255,0.18); padding: 4px 12px; border-radius: 20px; white-space: nowrap; }
+  .top-pick.live-top-pick { background: linear-gradient(135deg, #e63946, #b32330); }
+  .top-pick-note { font-size: 10px; opacity: 0.85; line-height: 1.4; }
   .odds-header { font-size: 11px; font-weight: 700; color: #1a3a6b; margin-bottom: 8px; padding-bottom: 6px; border-bottom: 1px solid #e8ecf4; }
   .live-header-note { font-size: 11px; color: #e63946; font-weight: 700; margin-bottom: 8px; }
   .stats-box { font-size: 11px; color: #4a6090; background: #f0f4ff; border-radius: 6px; padding: 6px 8px; margin-bottom: 8px; line-height: 1.6; }
@@ -72,6 +84,24 @@
   .empty-tab { text-align: center; margin-top: 60px; color: #8a9ab8; font-size: 14px; }
   .spin { animation: spin 1s linear infinite; display: inline-block; }
   @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  .debug-fab { position: fixed; bottom: 16px; right: 16px; z-index: 200; background: #1a1a2e; color: #fff; border: none; border-radius: 24px; padding: 10px 16px; font-size: 12px; font-weight: 700; box-shadow: 0 2px 10px rgba(0,0,0,0.35); cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .debug-fab .debug-badge { background: #e63946; border-radius: 10px; padding: 1px 6px; font-size: 10px; min-width: 14px; text-align: center; }
+  .debug-panel { position: fixed; inset: 0; background: rgba(0,0,0,0.55); z-index: 300; display: none; align-items: flex-end; }
+  .debug-panel.open { display: flex; }
+  .debug-panel-content { background: #fff; width: 100%; max-height: 75vh; border-radius: 16px 16px 0 0; padding: 16px; display: flex; flex-direction: column; }
+  .debug-panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px; flex-wrap: wrap; }
+  .debug-panel-title { font-weight: 800; font-size: 15px; }
+  .debug-panel-actions { display: flex; gap: 8px; }
+  .debug-panel-btn { font-size: 12px; font-weight: 700; padding: 7px 12px; border-radius: 8px; border: none; cursor: pointer; }
+  .debug-panel-btn.copy { background: #1a3a6b; color: #fff; }
+  .debug-panel-btn.clear { background: #eee; color: #333; }
+  .debug-panel-btn.close { background: #e63946; color: #fff; }
+  .debug-log-list { overflow-y: auto; flex: 1; font-family: monospace; font-size: 11px; line-height: 1.5; background: #f7f7f9; border-radius: 8px; padding: 10px; word-break: break-word; }
+  .debug-log-entry { border-bottom: 1px solid #e5e5e5; padding: 7px 0; white-space: pre-wrap; }
+  .debug-log-entry:last-child { border-bottom: none; }
+  .debug-log-entry.err { color: #9b2c2c; }
+  .debug-log-entry.best { color: #1a6b3a; font-weight: 800; }
+  .debug-empty { color: #999; text-align: center; padding: 24px 0; font-size: 12px; }
 </style>
 </head>
 <body>
@@ -86,24 +116,191 @@
     <button class="tab-btn" id="tabDone" onclick="switchTab('done')">TERMINÉS</button>
   </div>
 </div>
+<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-11-7-diag</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
+  <div id="globalErrorBanner" style="display:none;background:#fdf0ef;border:2px solid #e63946;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#9b2c2c;font-family:monospace;white-space:pre-wrap;word-break:break-word;"></div>
   <button id="refreshBtn" class="refresh-btn" style="display:none" onclick="loadFixtures()">🔄 Rafraîchir</button>
   <div id="matchList"></div>
   <div id="footerNote"></div>
 </div>
+<button id="debugFab" class="debug-fab" onclick="toggleDebugPanel()">🐛 Debug <span class="debug-badge" id="debugBadge" style="display:none">0</span></button>
+<div id="debugPanel" class="debug-panel">
+  <div class="debug-panel-content">
+    <div class="debug-panel-header">
+      <span class="debug-panel-title">🐛 Journal technique</span>
+      <div class="debug-panel-actions">
+        <button class="debug-panel-btn copy" onclick="copyDebugLog()">Copier</button>
+        <button class="debug-panel-btn clear" onclick="clearDebugLog()">Vider</button>
+        <button class="debug-panel-btn close" onclick="toggleDebugPanel()">Fermer</button>
+      </div>
+    </div>
+    <div class="debug-panel-header" style="margin-top:2px;">
+      <span class="debug-panel-title" style="font-size:13px;">📊 Fiabilité cotes vs forme</span>
+      <button class="debug-panel-btn copy" onclick="refreshTrackerPanel()">Vérifier les résultats</button>
+    </div>
+    <div id="trackerPanel" class="debug-log-list" style="max-height:180px;margin-bottom:12px;"><div class="debug-empty">Chargement...</div></div>
+    <div class="debug-panel-header" style="margin-top:2px;">
+      <span class="debug-panel-title" style="font-size:13px;">💰 Rentabilité des value bets</span>
+      <button class="debug-panel-btn copy" onclick="refreshVBTrackerPanel()">Vérifier les résultats</button>
+    </div>
+    <div id="vbTrackerPanel" class="debug-log-list" style="max-height:180px;margin-bottom:12px;"><div class="debug-empty">Chargement...</div></div>
+    <div class="debug-panel-header" style="margin-top:2px;">
+      <span class="debug-panel-title" style="font-size:13px;">⏩ Rattrapage historique</span>
+      <button class="debug-panel-btn copy" onclick="refreshBackfillPanel()">Lancer</button>
+    </div>
+    <div id="backfillPanel" class="debug-log-list" style="max-height:120px;margin-bottom:12px;"><div class="debug-empty">Analyse des matchs déjà terminés des 5 derniers jours (cotes encore disponibles ~7 jours), résolus immédiatement puisque le résultat est déjà connu. Utilise du quota API (jusqu'à ~40 matchs par lancement).</div></div>
+    <div id="debugLogList" class="debug-log-list"><div class="debug-empty">Aucun message pour l'instant. Ouvre un match (surtout en direct) et appuie sur "Analyser" : si quelque chose ne va pas, ça s'affichera ici.</div></div>
+  </div>
+</div>
 <script>
+// TEST DE DIAGNOSTIC TEMPORAIRE : preuve visuelle immédiate, synchrone, que le script démarre bien
+// son exécution — indépendante de tout appel réseau. À retirer une fois le blocage résolu.
+(function(){
+  const b=document.getElementById('globalErrorBanner');
+  if(b){
+    b.style.display='block';
+    b.style.background='#d4f8d4';
+    b.style.borderColor='#2f9e44';
+    b.style.color='#1b5e20';
+    b.textContent='✅ JS a démarré à '+new Date().toLocaleTimeString('fr-FR');
+  }
+})();
+// Capture toute erreur JS non gérée (ou promesse rejetée non gérée) et l'affiche directement à
+// l'écran. Sans ça, sur mobile sans accès aux outils développeur, une erreur silencieuse laissait
+// l'app figée (ex: sur "Chargement...") sans aucun moyen de savoir pourquoi. Placé tout en haut du
+// script pour attraper aussi les erreurs qui surviendraient pendant l'initialisation elle-même.
+function showGlobalError(msg){
+  const b=document.getElementById('globalErrorBanner');
+  if(!b) return; // le DOM peut ne pas être prêt si l'erreur survient très tôt
+  const time=new Date().toLocaleTimeString('fr-FR');
+  b.style.display='block';
+  b.textContent = `[${time}] ${msg}` + (b.textContent ? '\n\n' + b.textContent : '');
+}
+window.addEventListener('error', (e)=>{
+  showGlobalError(`Erreur JS : ${e.message} (${e.filename?.split('/').pop()||''}:${e.lineno||'?'})`);
+});
+window.addEventListener('unhandledrejection', (e)=>{
+  showGlobalError(`Promesse rejetée non gérée : ${e.reason?.message||e.reason}`);
+});
 const API_BASE = "https://Sadquiy35--2a7ef21a6f6f11f1a7161607ee4eb77e.web.val.run";
 const BOOKMAKER_1XBET = 8;
 let allFixtures = [], currentTab = "upcoming";
+const fixtureOddsCache = {}; // fixture.id -> {lh, la, parsed, source} | null (null = no odds found, cached to avoid refetch)
+const matchUIState = {};     // fixture.id -> {expanded, html, btnLabel, btnClass}
+const leagueOpenState = {};  // league.id -> true/false
+const teamFormCache = {};    // team.id -> {avgScored, avgConceded, matches} | null
+
+// Forme récente d'une équipe : moyenne buts marqués/encaissés sur ses ~8 derniers matchs joués
+// (toutes compétitions confondues). Sert à affiner les lambdas quand les cotes sont absentes ou
+// pour corriger un décalage entre la cote et une forme très récente (blessure, série...).
+async function getTeamRecentForm(teamId) {
+  if (Object.prototype.hasOwnProperty.call(teamFormCache, teamId)) return teamFormCache[teamId];
+  let data=null;
+  try {
+    data = await apiGet(`/fixtures?team=${teamId}&last=10`);
+  } catch(e) {
+    console.warn(`[pronos] Forme récente indisponible pour l'équipe ${teamId}:`, e.message);
+    teamFormCache[teamId]=null;
+    return null;
+  }
+  if(!data || data.length===0){ teamFormCache[teamId]=null; return null; }
+  let scored=0, conceded=0, n=0;
+  let hScored=0, hConceded=0, hN=0, aScored=0, aConceded=0, aN=0;
+  data.forEach(f=>{
+    if(f.goals.home===null||f.goals.away===null) return; // match pas encore joué/terminé
+    const isHome = f.teams.home.id===teamId;
+    const gFor=isHome?f.goals.home:f.goals.away, gAgainst=isHome?f.goals.away:f.goals.home;
+    scored+=gFor; conceded+=gAgainst; n++;
+    if(isHome){ hScored+=gFor; hConceded+=gAgainst; hN++; }
+    else { aScored+=gFor; aConceded+=gAgainst; aN++; }
+  });
+  if(n===0){ teamFormCache[teamId]=null; return null; }
+  const overallAvgScored=scored/n, overallAvgConceded=conceded/n;
+  // Une équipe peut être bien plus forte à domicile qu'à l'extérieur (ou l'inverse) : on sépare les
+  // 2 formes. Mais avec seulement ~5 matchs domicile et 5 extérieur sur 10 matchs, l'échantillon est
+  // petit et bruité : on le mélange ("shrinkage") avec la moyenne globale, pondéré par le nombre de
+  // matchs disponibles dans ce sous-groupe (poids équivalent à 2 matchs de moyenne globale).
+  const shrink=(sum,cnt,overallAvg,pseudo=2)=> cnt>0 ? (sum+overallAvg*pseudo)/(cnt+pseudo) : overallAvg;
+  const home={
+    avgScored: shrink(hScored,hN,overallAvgScored),
+    avgConceded: shrink(hConceded,hN,overallAvgConceded),
+    n:hN
+  };
+  const away={
+    avgScored: shrink(aScored,aN,overallAvgScored),
+    avgConceded: shrink(aConceded,aN,overallAvgConceded),
+    n:aN
+  };
+  const result={avgScored:overallAvgScored, avgConceded:overallAvgConceded, matches:n, home, away};
+  teamFormCache[teamId]=result;
+  return result;
+}
+
+// --- Journal technique mobile : capture les console.warn/error pour les afficher dans un panneau,
+// puisqu'on ne peut pas ouvrir la console développeur sur téléphone.
+let debugLog = [];
+let debugUnread = 0;
+const _origWarn = console.warn.bind(console);
+const _origError = console.error.bind(console);
+function pushDebugLog(level, args) {
+  const msg = args.map(a=>{
+    if (typeof a === 'string') return a;
+    try { return JSON.stringify(a); } catch(e){ return String(a); }
+  }).join(' ');
+  const time = new Date().toLocaleTimeString('fr-FR');
+  debugLog.push({level, text:`[${time}] ${level.toUpperCase()}: ${msg}`});
+  if (debugLog.length > 100) debugLog.shift();
+  debugUnread++;
+  updateDebugBadge();
+  const panel = document.getElementById('debugPanel');
+  if (panel && panel.classList.contains('open')) renderDebugLog();
+}
+console.warn = function(...args){ pushDebugLog('warn', args); _origWarn(...args); };
+console.error = function(...args){ pushDebugLog('error', args); _origError(...args); };
+function updateDebugBadge(){
+  const b=document.getElementById('debugBadge'); if(!b) return;
+  if(debugUnread>0){ b.style.display='inline'; b.textContent=debugUnread>99?'99+':debugUnread; } else { b.style.display='none'; }
+}
+function renderDebugLog(){
+  const list=document.getElementById('debugLogList'); if(!list) return;
+  if(debugLog.length===0){ list.innerHTML='<div class="debug-empty">Aucun message pour l\'instant. Ouvre un match (surtout en direct) et appuie sur "Analyser" : si quelque chose ne va pas, ça s\'affichera ici.</div>'; return; }
+  list.innerHTML=debugLog.slice().reverse().map(l=>`<div class="debug-log-entry${l.level==='error'?' err':''}">${l.text.replace(/</g,'&lt;')}</div>`).join('');
+}
+function toggleDebugPanel(){
+  const panel=document.getElementById('debugPanel'); if(!panel) return;
+  panel.classList.toggle('open');
+  if(panel.classList.contains('open')){ renderDebugLog(); debugUnread=0; updateDebugBadge(); renderTrackerPanel(); renderVBTrackerPanel(); }
+}
+function clearDebugLog(){ debugLog=[]; renderDebugLog(); }
+async function copyDebugLog(){
+  const text=debugLog.map(l=>l.text).join('\n')||'(vide)';
+  try{
+    await navigator.clipboard.writeText(text);
+    alert('Journal copié ! Tu peux le coller dans le chat.');
+  }catch(e){
+    alert('Copie automatique impossible sur ce navigateur. Sélectionne le texte manuellement dans le panneau.');
+  }
+}
 
 function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
+// Délai d'expiration sur chaque appel API : sans ça, si le proxy CORS Val Town ou l'API-Football
+// reste bloqué sans jamais répondre (ni succès, ni erreur HTTP), l'app restait figée sur "Chargement..."
+// indéfiniment, sans aucun message pour comprendre pourquoi.
+// NOTE : on n'utilise PAS AbortController/AbortSignal ici. Dans certains environnements qui relaient
+// fetch() via postMessage entre fenêtres (ex: l'aperçu de fichier intégré à Claude), un AbortSignal
+// passé en option de fetch fait planter l'appel ("AbortSignal object could not be cloned") car cet
+// objet n'est pas sérialisable. Un simple Promise.race avec un timer fait le même travail sans ce risque.
+const API_TIMEOUT_MS = 15000;
+function timeoutPromise(ms){
+  return new Promise((_,reject)=>setTimeout(()=>reject(new Error(`Le serveur (proxy Val Town / API-Football) n'a pas répondu en ${ms/1000}s. Réessaie dans un instant.`)), ms));
+}
 async function apiGet(path) {
-  const res = await fetch(`${API_BASE}${path}`);
+  const res = await Promise.race([fetch(`${API_BASE}${path}`), timeoutPromise(API_TIMEOUT_MS)]);
   if (!res.ok) throw new Error(`Erreur API (${res.status})`);
   const json = await res.json();
   if (json.errors && Object.keys(json.errors).length > 0) throw new Error(JSON.stringify(json.errors));
@@ -113,6 +310,16 @@ const LIVE_STATUSES = ["1H","HT","2H","ET","BT","P","SUSP","INT","LIVE"];
 const DONE_STATUSES = ["FT","AET","PEN","AWD","WO"];
 function isLive(f) { return LIVE_STATUSES.includes(f.fixture.status.short); }
 function isFinished(f) { return DONE_STATUSES.includes(f.fixture.status.short); }
+// Un match "en direct" dont le statut n'a manifestement pas bougé depuis très longtemps (l'API n'a
+// jamais mis à jour la minute ou le statut final) : on le traite comme terminé dans l'app, plutôt
+// que de le laisser bloqué indéfiniment dans l'onglet EN DIRECT.
+function isStaleLive(f) {
+  if (!isLive(f)) return false;
+  const kickoff = new Date(f.fixture.date).getTime();
+  const minutesSinceKickoff = (Date.now()-kickoff)/60000;
+  const elapsed = f.fixture.status.elapsed || 0;
+  return (minutesSinceKickoff - elapsed) > 60;
+}
 function isUpcoming(f) { return !isLive(f) && !isFinished(f); }
 const LEAGUE_PRIORITY = ["world cup","fifa world cup","champions league","premier league","la liga","serie a","bundesliga","ligue 1","europa league","conference league","eredivisie","primeira liga","super lig","botola","nations league","afcon","copa america"];
 function leaguePriority(n) { const name=(n||"").toLowerCase(); for(let i=0;i<LEAGUE_PRIORITY.length;i++) if(name.includes(LEAGUE_PRIORITY[i])) return i; return LEAGUE_PRIORITY.length; }
@@ -123,17 +330,72 @@ function formatLeagueName(league,country) { const c=(country||"").trim(),l=(leag
 
 function oddsToProb(odds) { return odds > 1 ? 1/odds : 0; }
 function normalizeProbabilities(probs) { const t=probs.reduce((s,p)=>s+p,0); return t===0?probs:probs.map(p=>p/t); }
+// Retire la marge du bookmaker sur une paire Over/Under en normalisant les deux probabilités
+// implicites pour qu'elles somment à 1, plutôt que d'utiliser la probabilité implicite brute d'un
+// seul côté (qui inclut la marge de 1xBet et biaiserait la cible de calibration).
+function pairImpliedProb(oddsOver, oddsUnder) {
+  const pOver=oddsToProb(oddsOver), pUnder=oddsToProb(oddsUnder||0);
+  const t=pOver+pUnder;
+  return t>0 ? pOver/t : pOver;
+}
 
 function poissonProb(lambda, k) { let p=Math.exp(-lambda); for(let i=0;i<k;i++) p*=lambda/(i+1); return p; }
 function buildScoreMatrix(lh, la, max=7) { const m=[]; for(let i=0;i<=max;i++){m[i]=[];for(let j=0;j<=max;j++)m[i][j]=poissonProb(lh,i)*poissonProb(la,j);} return m; }
+// Marché "Handicap" 1xBet : "1 (h)" = équipe domicile gagne après ajout de h à son score,
+// "2 (h)" = équipe extérieure gagne après ajout de h à son score. On réutilise la grille de scores.
+function handicapProb(lh, la, team, h) {
+  const M=buildScoreMatrix(lh,la,8);
+  let p=0;
+  for(let i=0;i<=8;i++) for(let j=0;j<=8;j++){
+    const adjHome=team===1?i+h:i, adjAway=team===2?j+h:j;
+    if(adjHome>adjAway) p+=M[i][j];
+  }
+  return p;
+}
 
-function estimateLambdas(pH, pD, pA) {
+// Poids relatif du marché Over/Under dans le fit, par rapport à chaque composante du 1X2 (poids 1
+// chacune). On lui donne le même poids qu'UNE composante 1X2 par ligne de total disponible : assez
+// pour que la calibration en tienne vraiment compte (avant, poids 0 = jamais utilisé), sans laisser
+// une seule ligne de total dominer entièrement le 1X2 si les deux marchés se contredisent fortement.
+const OU_FIT_WEIGHT = 1;
+
+// overTargets (optionnel) : liste de {line, p} où p est la probabilité implicite (sans marge) que le
+// nombre total de buts dépasse `line`, dérivée des cotes Over/Under 1xBet. Avant, les lambdas
+// n'étaient calibrés QUE sur le 1X2, puis réutilisés pour calculer une prob de "Total buts" jamais
+// confrontée aux vraies cotes Over/Under pendant le fit — deux matchs avec le même 1X2 mais des
+// dynamiques de buts différentes retombaient sur les mêmes lambdas, et l'écart mesuré ensuite entre
+// ce Poisson "aveugle aux totaux" et la cote 1xBet reflétait surtout cette limite du modèle, pas une
+// vraie inefficacité de marché (cf. panneau Debug > ROI : edges élevés sur "Total buts" = pires ROI,
+// signe que c'était le modèle qui se trompait le plus fort, pas 1xBet).
+function estimateLambdas(pH, pD, pA, overTargets) {
+  const max=6;
+  function scoreAt(lh, la) {
+    const M=buildScoreMatrix(lh,la,max);
+    let ph=0,pd=0,pa=0;
+    const overSums = overTargets ? overTargets.map(()=>0) : null;
+    for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+      const p=M[i][j];
+      if(i>j)ph+=p;else if(i===j)pd+=p;else pa+=p;
+      if(overTargets){ const tot=i+j; for(let k=0;k<overTargets.length;k++) if(tot>overTargets[k].line) overSums[k]+=p; }
+    }
+    let err=Math.pow(ph-pH,2)+Math.pow(pd-pD,2)+Math.pow(pa-pA,2);
+    if(overTargets) for(let k=0;k<overTargets.length;k++) err += OU_FIT_WEIGHT*Math.pow(overSums[k]-overTargets[k].p,2);
+    return err;
+  }
+  // Passe 1 : recherche grossière (pas 0.1) pour trouver une zone approximative
   let best={lh:1.3,la:1.1},bestErr=Infinity;
   for(let lh=0.2;lh<=4.0;lh+=0.1) for(let la=0.2;la<=4.0;la+=0.1){
-    let ph=0,pd=0,pa=0; const M=buildScoreMatrix(lh,la,6);
-    for(let i=0;i<=6;i++) for(let j=0;j<=6;j++){const p=M[i][j];if(i>j)ph+=p;else if(i===j)pd+=p;else pa+=p;}
-    const e=Math.pow(ph-pH,2)+Math.pow(pd-pD,2)+Math.pow(pa-pA,2);
+    const e=scoreAt(lh,la);
     if(e<bestErr){bestErr=e;best={lh,la};}
+  }
+  // Passe 2 : recherche fine (pas 0.005) autour du meilleur point trouvé, pour éviter que des
+  // matchs différents ne retombent tous sur les mêmes lambdas "arrondis" (cause des pronos répétés).
+  const range=0.12, step=0.005;
+  for(let lh=Math.max(0.05,best.lh-range); lh<=best.lh+range; lh+=step){
+    for(let la=Math.max(0.05,best.la-range); la<=best.la+range; la+=step){
+      const e=scoreAt(lh,la);
+      if(e<bestErr){bestErr=e;best={lh,la};}
+    }
   }
   return best;
 }
@@ -144,6 +406,7 @@ function computeModelProbabilities(lh, la) {
   const max=7;
   let pH=0,pD=0,pA=0,pO05=0,pO15=0,pO25=0,pO35=0,pBTTS=0,pNilNil=0,pSD=0;
   let p1HO05=0,p1HO15=0,p2HO05=0,p2HO15=0,pHScore05=0,pHScore15=0,pAScore05=0,pAScore15=0,pWTNH=0,pWTNA=0;
+  let pFH_H=0,pFH_D=0,pFH_A=0,pSH_H=0,pSH_D=0,pSH_A=0;
   for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
     const p=M[i][j];
     if(i>j)pH+=p;else if(i===j)pD+=p;else pA+=p;
@@ -153,8 +416,11 @@ function computeModelProbabilities(lh, la) {
     if(i>j&&j===0)pWTNH+=p;if(j>i&&i===0)pWTNA+=p;
   }
   for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
-    if(i+j>0)p1HO05+=M1[i][j];if(i+j>1)p1HO15+=M1[i][j];
-    if(i+j>0)p2HO05+=M2[i][j];if(i+j>1)p2HO15+=M2[i][j];
+    const p1=M1[i][j], p2=M2[i][j];
+    if(i+j>0)p1HO05+=p1;if(i+j>1)p1HO15+=p1;
+    if(i+j>0)p2HO05+=p2;if(i+j>1)p2HO15+=p2;
+    if(i>j)pFH_H+=p1;else if(i===j)pFH_D+=p1;else pFH_A+=p1;
+    if(i>j)pSH_H+=p2;else if(i===j)pSH_D+=p2;else pSH_A+=p2;
   }
   const htftMap={};
   for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
@@ -165,6 +431,16 @@ function computeModelProbabilities(lh, la) {
       htftMap[htR+'/'+ftR]=(htftMap[htR+'/'+ftR]||0)+p1*p2;
     }
   }
+  // "First Half/Second Half Result" (marché réel 1xBet) : résultat de la 1ère MT ET de la 2ème MT,
+  // chacune prise ISOLÉMENT (pas cumulée comme HT-FT) — 9 combinaisons 1/1, 1/X, 1/2, X/1, X/X, X/2, 2/1, 2/X, 2/2.
+  const fhshMap={};
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+    const p1=M1[i][j];if(!p1)continue;const r1=i>j?'1':i===j?'X':'2';
+    for(let k=0;k<=max;k++) for(let l=0;l<=max;l++){
+      const p2=M2[k][l];if(!p2)continue;const r2=k>l?'1':k===l?'X':'2';
+      fhshMap[r1+'/'+r2]=(fhshMap[r1+'/'+r2]||0)+p1*p2;
+    }
+  }
   let pWBH=0,pWBA=0,pDB=0,pBEH=0;
   for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
     const p1=M1[i][j];if(!p1)continue;
@@ -173,15 +449,39 @@ function computeModelProbabilities(lh, la) {
       if(i>j&&k>l)pWBH+=w;if(i<j&&k<l)pWBA+=w;if(i===j&&k===l)pDB+=w;if(i>0&&j>0&&k>0&&l>0)pBEH+=w;
     }
   }
-  return {pH,pD,pA,pO05,pO15,pO25,pO35,pBTTS,pNilNil,pSD,p1HO05,p1HO15,p2HO05,p2HO15,pHScore05,pHScore15,pAScore05,pAScore15,pWTNH,pWTNA,pWTNAny:pWTNH+pWTNA,htftMap,pWBH,pWBA,pDB,pBEH};
+  // Toutes les probabilités de score exact (pas juste 0-0), pour comparer à TOUS les scores que
+  // 1xBet propose réellement dans son marché "Correct Score", plutôt qu'une liste devinée à l'avance.
+  const exactScoreMap={};
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){ exactScoreMap[`${i}-${j}`]=M[i][j]; }
+  return {pH,pD,pA,pO05,pO15,pO25,pO35,pBTTS,pNilNil,pSD,p1HO05,p1HO15,p2HO05,p2HO15,pHScore05,pHScore15,pAScore05,pAScore15,pWTNH,pWTNA,pWTNAny:pWTNH+pWTNA,htftMap,exactScoreMap,fhshMap,pWBH,pWBA,pDB,pBEH,pFH_H,pFH_D,pFH_A,pSH_H,pSH_D,pSH_A};
 }
 
-function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
+// Évite d'afficher plusieurs paris corrélés qui racontent la même histoire (ex: Under 1.5/2.5/3.5
+// en même temps) : on ne garde que le meilleur edge par marché (ex: un seul "Total buts", un seul
+// "HT-FT", etc.), plutôt que de multiplier des variantes du même avis sous-jacent.
+function dedupeByMarket(bets){
+  const bestByMarket={};
+  bets.forEach(vb=>{
+    if(!bestByMarket[vb.market] || vb.edge>bestByMarket[vb.market].edge) bestByMarket[vb.market]=vb;
+  });
+  return Object.values(bestByMarket);
+}
+
+function findValueBets(modelProbs, odds1xbet, homeName, awayName, lh, la) {
   const valueBets=[];
   function checkValue(market,pick,modelProb,odd1xbet){
     if(!odd1xbet||odd1xbet<=1)return;
     const impliedProb=oddsToProb(odd1xbet), edge=modelProb-impliedProb;
-    if(edge>0.03) valueBets.push({market,pick,modelProb:Math.round(modelProb*100),impliedProb:Math.round(impliedProb*100),odd:odd1xbet,edge:Math.round(edge*100)});
+    // Seuil relevé à 8% spécifiquement pour "Total buts" : le suivi ROI a montré, sur un échantillon
+    // de 67 paris, un ROI de -14.1% (et -51.5% dans la tranche 6-10%) pour ce marché précis, alors que
+    // les autres marchés restent au seuil normal de 3% (BTTS +25.7%, Double Chance +19.3% sur le même suivi).
+    const threshold = market==='Total buts' ? 0.08 : 0.03;
+    if(edge>threshold){
+      // On arrondit modèle et implicite d'abord, puis on calcule l'edge affiché à partir de ces
+      // valeurs arrondies, pour que le badge corresponde toujours exactement à Modèle - Implicite.
+      const mp100=Math.round(modelProb*100), ip100=Math.round(impliedProb*100);
+      valueBets.push({market,pick,modelProb:mp100,impliedProb:ip100,odd:odd1xbet,edge:mp100-ip100});
+    }
   }
   const o=odds1xbet;
   if(o.home1x2)checkValue('Résultat (1X2)',`Victoire ${homeName}`,modelProbs.pH,o.home1x2);
@@ -198,12 +498,24 @@ function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
   if(o.under25)checkValue('Total buts','Under 2.5',1-modelProbs.pO25,o.under25);
   if(o.over35)checkValue('Total buts','Over 3.5',modelProbs.pO35,o.over35);
   if(o.under35)checkValue('Total buts','Under 3.5',1-modelProbs.pO35,o.under35);
+  // Log de diagnostic indépendant du seuil de value bet : permet de vérifier dans le Journal
+  // technique que le fit joint 1X2+Over/Under fait bien converger la proba du modèle vers celle du
+  // marché sur "Total buts" (petit écart attendu), plutôt que de simplement supprimer les value bets
+  // sans qu'on sache si c'est parce que le modèle est enfin d'accord avec 1xBet ou parce qu'un bug
+  // renvoie des probabilités par défaut/aberrantes.
+  if(o.over25){
+    const impliedO25=oddsToProb(o.over25), ecart=(modelProbs.pO25-impliedO25)*100;
+    console.warn(`[pronos] Diag Total buts (Over 2.5) ${homeName} vs ${awayName} : modèle=${(modelProbs.pO25*100).toFixed(1)}% marché=${(impliedO25*100).toFixed(1)}% écart=${ecart>=0?'+':''}${ecart.toFixed(1)}pts`);
+  }
   if(o.bttsYes)checkValue('Les deux équipes marquent','Oui',modelProbs.pBTTS,o.bttsYes);
   if(o.bttsNo)checkValue('Les deux équipes marquent','Non',1-modelProbs.pBTTS,o.bttsNo);
   if(o.wtnHome)checkValue(`${homeName} gagne sans encaisser`,'Oui',modelProbs.pWTNH,o.wtnHome);
   if(o.wtnAway)checkValue(`${awayName} gagne sans encaisser`,'Oui',modelProbs.pWTNA,o.wtnAway);
   if(o.scoreDraw)checkValue('Match nul avec buts','Oui',modelProbs.pSD,o.scoreDraw);
-  if(o.nilNil)checkValue('0-0','Oui',modelProbs.pNilNil,o.nilNil);
+  (o.exactScores||[]).forEach(es=>{
+    const p=modelProbs.exactScoreMap[es.label];
+    if(p!==undefined) checkValue('Score exact',es.label,p,es.odd);
+  });
   if(o.ht_over05)checkValue('1ère MT Over 0.5','Oui',modelProbs.p1HO05,o.ht_over05);
   if(o.ht_under05)checkValue('1ère MT Under 0.5','Oui',1-modelProbs.p1HO05,o.ht_under05);
   if(o.ht_over15)checkValue('1ère MT Over 1.5','Oui',modelProbs.p1HO15,o.ht_over15);
@@ -212,16 +524,71 @@ function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
   if(o.sh_over15)checkValue('2ème MT Over 1.5','Oui',modelProbs.p2HO15,o.sh_over15);
   if(o.homeScore05)checkValue(`${homeName} marque`,'Oui',modelProbs.pHScore05,o.homeScore05);
   if(o.awayScore05)checkValue(`${awayName} marque`,'Oui',modelProbs.pAScore05,o.awayScore05);
+  // "First Half/Second Half Result" : on essaie plusieurs formats de libellé possibles (1/1, 1-1,
+  // Home/Home...) car on ne peut pas garantir lequel 1xBet utilise exactement sans avoir pu tester en direct.
+  const fhshLabelVariants={
+    '1/1':[`${homeName}/${homeName}`],'1/X':[`${homeName}/Nul`],'1/2':[`${homeName}/${awayName}`],
+    'X/1':[`Nul/${homeName}`],'X/X':['Nul/Nul'],'X/2':[`Nul/${awayName}`],
+    '2/1':[`${awayName}/${homeName}`],'2/X':[`${awayName}/Nul`],'2/2':[`${awayName}/${awayName}`]
+  };
+  (o.fhshOdds||[]).forEach(fs=>{
+    let p=modelProbs.fhshMap[fs.label]; // tente d'abord le format brut "1/1", "X/2", etc.
+    if(p===undefined){
+      // sinon cherche si le libellé correspond à une variante nommée (ex: "France/France")
+      const key=Object.keys(fhshLabelVariants).find(k=>fhshLabelVariants[k].includes(fs.label));
+      if(key) p=modelProbs.fhshMap[key];
+    }
+    if(p!==undefined) checkValue('1ère MT/2ème MT',fs.label,p,fs.odd);
+  });
+  // Repli : marchés séparés "First Half Winner" / "Second Half Winner" (selon la compétition)
+  if(o.fh_home)checkValue('1ère MT - Résultat',`Victoire ${homeName}`,modelProbs.pFH_H,o.fh_home);
+  if(o.fh_draw)checkValue('1ère MT - Résultat','Match nul',modelProbs.pFH_D,o.fh_draw);
+  if(o.fh_away)checkValue('1ère MT - Résultat',`Victoire ${awayName}`,modelProbs.pFH_A,o.fh_away);
+  if(o.sh_home)checkValue('2ème MT - Résultat',`Victoire ${homeName}`,modelProbs.pSH_H,o.sh_home);
+  if(o.sh_draw)checkValue('2ème MT - Résultat','Match nul',modelProbs.pSH_D,o.sh_draw);
+  if(o.sh_away)checkValue('2ème MT - Résultat',`Victoire ${awayName}`,modelProbs.pSH_A,o.sh_away);
+  // "Clean Sheet" : l'équipe ne concède aucun but, peu importe le résultat du match
+  if(lh!==undefined&&la!==undefined){
+    if(o.cleanSheetHome)checkValue('Clean Sheet',`${homeName} : oui`,poissonProb(la,0),o.cleanSheetHome);
+    if(o.cleanSheetAway)checkValue('Clean Sheet',`${awayName} : oui`,poissonProb(lh,0),o.cleanSheetAway);
+  }
   const htftKeys={'1/1':`${homeName}/${homeName}`,'1/X':`${homeName}/Nul`,'X/X':'Nul/Nul','X/1':`Nul/${homeName}`,'X/2':`Nul/${awayName}`,'2/2':`${awayName}/${awayName}`,'2/X':`${awayName}/Nul`,'2/1':`${awayName}/${homeName}`,'1/2':`${homeName}/${awayName}`};
   Object.entries(htftKeys).forEach(([key,label])=>{if(o[`htft_${key}`])checkValue('HT-FT',label,modelProbs.htftMap[key]||0,o[`htft_${key}`]);});
-  return valueBets.sort((a,b)=>b.edge-a.edge);
+  // "Total 1" / "Total 2" (buts d'une équipe précise, indépendamment de l'autre) : chaque équipe suit
+  // sa propre loi de Poisson (lh pour l'équipe à domicile, la pour l'extérieur), donc pas besoin de la
+  // grille croisée — juste la probabilité directe qu'elle marque plus/moins que la ligne proposée.
+  function teamTotalProb(lambda, line, isOver){
+    const k=Math.floor(line);
+    let pUnderOrEqual=0;
+    for(let n=0;n<=k;n++) pUnderOrEqual+=poissonProb(lambda,n);
+    return isOver ? 1-pUnderOrEqual : pUnderOrEqual - (Number.isInteger(line)?poissonProb(lambda,line):0);
+  }
+  if(lh!==undefined&&la!==undefined){
+    (o.team1Totals||[]).forEach(t=>{
+      const m=t.label.match(/(Over|Under) ([\d.]+)/);
+      if(m) checkValue(`Total ${homeName}`,t.label,teamTotalProb(lh,parseFloat(m[2]),m[1]==='Over'),t.odd);
+    });
+    (o.team2Totals||[]).forEach(t=>{
+      const m=t.label.match(/(Over|Under) ([\d.]+)/);
+      if(m) checkValue(`Total ${awayName}`,t.label,teamTotalProb(la,parseFloat(m[2]),m[1]==='Over'),t.odd);
+    });
+    (o.handicapOdds||[]).forEach(h=>{
+      const p=handicapProb(lh,la,h.team,h.h);
+      const teamName=h.team===1?homeName:awayName;
+      const label=`${teamName} (${h.h>0?'+':''}${h.h})`;
+      checkValue('Handicap',label,p,h.odd);
+    });
+  }
+  return dedupeByMarket(valueBets).sort((a,b)=>b.edge-a.edge);
 }
 
 function parseOdds1xbet(oddsData, homeName, awayName) {
   if(!oddsData||oddsData.length===0)return null;
   let bk=null;
   for(const item of oddsData){const found=(item.bookmakers||[]).find(b=>b.id===BOOKMAKER_1XBET);if(found){bk=found;break;}}
-  if(!bk){for(const item of oddsData){if(item.bookmakers&&item.bookmakers.length>0){bk=item.bookmakers[0];break;}}}
+  // Important : on ne prend JAMAIS les cotes d'un autre bookmaker en repli silencieux. Toute l'app
+  // se présente comme "vs 1xBet" ; utiliser un autre bookmaker sans le dire fausserait le sens même
+  // du value bet affiché (l'edge serait calculé contre la mauvaise cote).
   if(!bk)return null;
   const result={};
   const getBet=(betName,valueName)=>{const bet=bk.bets?.find(b=>b.name===betName);if(!bet)return null;const v=bet.values?.find(v=>v.value===valueName||v.value?.toLowerCase()===valueName?.toLowerCase());return v?parseFloat(v.odd):null;};
@@ -233,8 +600,55 @@ function parseOdds1xbet(oddsData, homeName, awayName) {
   result.ht_over15=getBet('First Half - Goals Over/Under','Over 1.5');result.ht_under15=getBet('First Half - Goals Over/Under','Under 1.5');
   result.sh_over05=getBet('Second Half - Goals Over/Under','Over 0.5');result.sh_over15=getBet('Second Half - Goals Over/Under','Over 1.5');
   result.wtnHome=getBet('Win to Nil','Home');result.wtnAway=getBet('Win to Nil','Away');
-  result.scoreDraw=getBet('Score - Both Teams To Score','Yes');result.nilNil=getBet('Exact Score','0-0');
+  result.scoreDraw=getBet('Score - Both Teams To Score','Yes');
+  // Tous les scores exacts que 1xBet propose réellement pour ce match (variable selon le match :
+  // certains n'ont que 8-10 scores listés, d'autres 20+), plutôt qu'une liste de scores devinée à l'avance.
+  const exactScoreBet=bk.bets?.find(b=>b.name==='Exact Score'||b.name==='Correct Score');
+  result.exactScores=exactScoreBet ? exactScoreBet.values.map(v=>{
+    const odd=parseFloat(v.odd);
+    return isNaN(odd)?null:{label:v.value,odd};
+  }).filter(Boolean) : [];
   result.homeScore05=getBet(`${homeName} Total Goals`,'Over 0.5');result.awayScore05=getBet(`${awayName} Total Goals`,'Over 0.5');
+  // Résultat de chaque mi-temps séparément (Victoire/Nul/Défaite en 1ère et 2ème MT). Noms de marché
+  // devinés par analogie avec 'Match Winner' — à vérifier via le journal technique si jamais absents.
+  // Confirmé via une capture réelle de 1xBet : le marché s'appelle "First Half/Second Half Result",
+  // avec 9 combinaisons (résultat de la 1ère MT / résultat de la 2ème MT, chacune prise isolément,
+  // pas cumulée comme pour HT-FT). On récupère toutes celles que 1xBet propose pour ce match.
+  const fhshBet=bk.bets?.find(b=>b.name==='First Half/Second Half Result');
+  result.fhshOdds=fhshBet ? fhshBet.values.map(v=>{
+    const odd=parseFloat(v.odd);
+    return isNaN(odd)?null:{label:v.value,odd};
+  }).filter(Boolean) : [];
+  // Selon la compétition, 1xBet propose parfois 2 marchés séparés à la place du marché combiné :
+  // "First Half Winner" et "Second Half Winner" (chacun avec Home/Draw/Away).
+  if(!fhshBet){
+    result.fh_home=getBet('First Half Winner','Home');result.fh_draw=getBet('First Half Winner','Draw');result.fh_away=getBet('First Half Winner','Away');
+    result.sh_home=getBet('Second Half Winner','Home');result.sh_draw=getBet('Second Half Winner','Draw');result.sh_away=getBet('Second Half Winner','Away');
+    if(result.fh_home===null && result.sh_home===null){
+      console.warn(`[pronos] Marché 'First Half/Second Half Result' introuvable pour ${homeName} vs ${awayName}. Marchés disponibles :`, (bk.bets||[]).map(b=>b.name).join(', '));
+    }
+  }
+  // "Clean Sheet - Home" / "Clean Sheet - Away" : l'équipe ne concède aucun but (peu importe le résultat)
+  result.cleanSheetHome=getBet('Clean Sheet - Home','Yes');
+  result.cleanSheetAway=getBet('Clean Sheet - Away','Yes');
+  // "Total 1" / "Total 2" (buts d'une équipe précise, toutes lignes proposées par 1xBet)
+  const parseTeamTotal=(marketName)=>{
+    const bet=bk.bets?.find(b=>b.name===marketName);
+    return bet ? bet.values.map(v=>{
+      const odd=parseFloat(v.odd);
+      return isNaN(odd)?null:{label:v.value,odd};
+    }).filter(Boolean) : [];
+  };
+  result.team1Totals=parseTeamTotal('Total 1');
+  result.team2Totals=parseTeamTotal('Total 2');
+  // "Handicap" : format "1 (-3.5)" / "2 (3.5)" etc. (équipe 1 ou 2 + valeur du handicap appliqué)
+  const handicapBet=bk.bets?.find(b=>b.name==='Handicap');
+  result.handicapOdds=handicapBet ? handicapBet.values.map(v=>{
+    const odd=parseFloat(v.odd);
+    const m=v.value.match(/^(1|2)\s*\(([+-]?[\d.]+)\)$/);
+    if(!m||isNaN(odd)) return null;
+    return {team:parseInt(m[1]),h:parseFloat(m[2]),odd,label:v.value};
+  }).filter(Boolean) : [];
   return result;
 }
 
@@ -246,61 +660,708 @@ function renderValueBet(vb) {
   return `<div class="value-item ${cls}"><div class="value-market">${vb.market}</div><div class="value-pick">${vb.pick}</div><div class="value-row"><div class="value-odds">Cote: <b>${vb.odd}</b> · Implicite: <b>${vb.impliedProb}%</b> · Modèle: <b>${vb.modelProb}%</b></div><span class="value-badge ${badgeCls}">${label}</span></div></div>`;
 }
 
+function renderTopPick(vb) {
+  const icon = vb.edge>=10?'🔥':vb.edge>=6?'⚡':'✅';
+  return `<div class="top-pick"><div class="top-pick-label">🏆 Meilleur pari recommandé</div><div class="top-pick-market">${vb.market}</div><div class="top-pick-pick">${vb.pick}</div><div class="top-pick-row"><div class="top-pick-odds">Cote: <b>${vb.odd}</b> · Modèle: <b>${vb.modelProb}%</b> · Implicite: <b>${vb.impliedProb}%</b></div><span class="top-pick-badge">${icon} +${vb.edge}%</span></div></div>`;
+}
+
+function renderTopPickLive(label, p, noOddsAtAll) {
+  const pct=Math.round(p*100), icon=pct>=75?'🔥':pct>=60?'⚡':'✅';
+  const note = noOddsAtAll
+    ? "Estimation statistique théorique — aucune cote 1xBet trouvée pour ce match, donc on ne sait pas si ce marché est même proposé"
+    : "Confiance du modèle projeté (score + temps restant) — pas de cote live comparée";
+  return `<div class="top-pick live-top-pick"><div class="top-pick-label">🏆 Meilleur pari en direct</div><div class="top-pick-pick">${label}</div><div class="top-pick-row"><div class="top-pick-odds top-pick-note">${note}</div><span class="top-pick-badge">${icon} ${pct}%</span></div></div>`;
+}
+
 function confidenceBarHTML(v) {
   const pct=Math.round(v*100),color=pct>=65?"#1a6b3a":pct>=50?"#b08900":"#9b2c2c";
   return `<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><div style="flex:1;height:5px;background:#e8ecf4;border-radius:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div></div><span style="font-size:12px;font-weight:800;color:${color};min-width:36px;text-align:right">${pct}%</span></div>`;
 }
 
+// --- Suivi prospectif des prédictions : on ne peut pas backtester sur des mois de données passées
+// (API-Football ne garde les cotes que 7 jours après le coup d'envoi), donc on enregistre chaque
+// prédiction dès maintenant (cotes ET forme séparément) et on la compare au résultat réel une fois
+// le match terminé, pour savoir empiriquement quel ratio cotes/forme est le plus fiable.
+// --- Résultat final d'un match, mis en cache et partagé entre les différents suivis (évite de
+// refaire un appel API pour le même match si plusieurs trackers ont besoin du même résultat).
+const fixtureResultCache = {};
+async function getFixtureResult(fixtureId) {
+  if (Object.prototype.hasOwnProperty.call(fixtureResultCache, fixtureId)) return fixtureResultCache[fixtureId];
+  try {
+    const data = await apiGet(`/fixtures?id=${fixtureId}`);
+    const f = data && data[0];
+    if (!f || f.goals.home===null || f.goals.away===null || !DONE_STATUSES.includes(f.fixture.status.short)) {
+      fixtureResultCache[fixtureId]=null; return null;
+    }
+    const result = {home:f.goals.home, away:f.goals.away};
+    fixtureResultCache[fixtureId]=result;
+    return result;
+  } catch(e) {
+    console.warn(`[pronos] Résultat indisponible pour fixture ${fixtureId}:`, e.message);
+    return null;
+  }
+}
+
+const TRACKER_KEY='pronosTracker_v1';
+const RATIO_CANDIDATES=[1.0,0.85,0.7,0.5,0.3,0.15,0.0]; // poids sur les cotes (reste = poids sur la forme)
+function loadTracker(){ try{ return JSON.parse(localStorage.getItem(TRACKER_KEY)||'[]'); }catch(e){ return []; } }
+function saveTracker(arr){ try{ localStorage.setItem(TRACKER_KEY, JSON.stringify(arr)); }catch(e){ console.warn('[pronos] Sauvegarde du suivi impossible:', e.message); } }
+function recordPrediction(fixture, oddsLh, oddsLa, formLh, formLa){
+  const tracker=loadTracker();
+  if(tracker.find(t=>t.fixtureId===fixture.fixture.id)) return; // déjà enregistré
+  tracker.push({
+    fixtureId: fixture.fixture.id,
+    homeName: fixture.teams.home.name, awayName: fixture.teams.away.name,
+    kickoff: fixture.fixture.date,
+    oddsLh, oddsLa, formLh, formLa,
+    resolved:false, actualResult:null
+  });
+  if(tracker.length>500) tracker.splice(0, tracker.length-500); // évite de saturer le stockage local
+  saveTracker(tracker);
+}
+async function evaluateTracker(){
+  const tracker=loadTracker();
+  const unresolved=tracker.filter(t=>!t.resolved);
+  let apiCalls=0;
+  for(const rec of unresolved){
+    if(apiCalls>=20) break; // on limite le nombre d'appels API par vérification
+    const kickoff=new Date(rec.kickoff);
+    if(Date.now()-kickoff.getTime()<2.5*3600*1000) continue; // match probablement pas encore fini
+    apiCalls++;
+    const result=await getFixtureResult(rec.fixtureId);
+    if(!result) continue;
+    rec.actualResult = result.home>result.away?'H':result.home===result.away?'D':'A';
+    rec.resolved=true;
+  }
+  saveTracker(tracker);
+  return tracker;
+}
+function computeBrierByRatio(tracker){
+  const resolved=tracker.filter(t=>t.resolved);
+  return RATIO_CANDIDATES.map(w=>{
+    let sum=0, n=0;
+    resolved.forEach(rec=>{
+      const lh=rec.oddsLh*w+rec.formLh*(1-w), la=rec.oddsLa*w+rec.formLa*(1-w);
+      const mp=computeModelProbabilities(lh,la);
+      const actual={H:[1,0,0],D:[0,1,0],A:[0,0,1]}[rec.actualResult];
+      const pred=[mp.pH,mp.pD,mp.pA];
+      let brier=0; for(let i=0;i<3;i++) brier+=Math.pow(pred[i]-actual[i],2);
+      sum+=brier; n++;
+    });
+    return {weight:w, avgBrier:n>0?sum/n:null, n};
+  });
+}
+function renderTrackerPanel(){
+  const el=document.getElementById('trackerPanel'); if(!el) return;
+  const tracker=loadTracker();
+  const resolved=tracker.filter(t=>t.resolved);
+  if(resolved.length<5){
+    el.innerHTML=`<div class="debug-empty">Échantillon encore trop faible (${resolved.length} match${resolved.length>1?'s':''} résolu${resolved.length>1?'s':''} sur ${tracker.length} suivi${tracker.length>1?'s':''}). Continue à analyser des matchs en avant-match, puis reviens vérifier plus tard.</div>`;
+    return;
+  }
+  const scores=computeBrierByRatio(tracker);
+  const valid=scores.filter(s=>s.avgBrier!==null);
+  const best=valid.reduce((b,s)=>s.avgBrier<b.avgBrier?s:b, valid[0]);
+  el.innerHTML=`<div style="font-size:11px;color:#8a9ab8;margin-bottom:8px;">${resolved.length} match${resolved.length>1?'s':''} résolu${resolved.length>1?'s':''} sur ${tracker.length} suivi${tracker.length>1?'s':''} · score de Brier, plus bas = meilleur</div>`+
+    scores.map(s=>`<div class="debug-log-entry${s.weight===best.weight?' best':''}">Cotes ${Math.round(s.weight*100)}% / Forme ${Math.round((1-s.weight)*100)}% → Brier ${s.avgBrier!==null?s.avgBrier.toFixed(4):'—'} (n=${s.n})</div>`).join('');
+}
+async function refreshTrackerPanel(){
+  const el=document.getElementById('trackerPanel');
+  if(el) el.innerHTML='<div class="debug-empty">Vérification des résultats en cours...</div>';
+  await evaluateTracker();
+  renderTrackerPanel();
+}
+
+// --- Suivi de rentabilité réelle des value bets détectés (pas juste la précision des probabilités).
+// On enregistre chaque value bet affiché (marché, pick, cote, edge), et une fois le match terminé,
+// on vérifie s'il aurait gagné pour calculer un ROI réel en mise plate (1 unité par pari).
+const VB_TRACKER_KEY='pronosValueBetTracker_v1';
+// Identifiant de la méthode de calibration en vigueur au moment où le pari est enregistré. À
+// incrémenter à chaque changement de calibration qui peut changer les probabilités du modèle (ex:
+// ajout de la contrainte Over/Under ci-dessous), pour pouvoir comparer le ROI "avant/après" dans le
+// tracker sans que les anciens paris (autre méthode) diluent silencieusement le résultat.
+const CALIBRATION_VERSION='v2_joint_ou';
+function loadVBTracker(){ try{ return JSON.parse(localStorage.getItem(VB_TRACKER_KEY)||'[]'); }catch(e){ return []; } }
+function saveVBTracker(arr){ try{ localStorage.setItem(VB_TRACKER_KEY, JSON.stringify(arr)); }catch(e){ console.warn('[pronos] Sauvegarde du suivi value bets impossible:', e.message); } }
+// Les paris enregistrés avant l'introduction de ce champ n'ont pas de calibVersion : on les traite
+// comme 'v1_1x2_only' (l'unique méthode qui existait alors : lambdas calibrés sur le 1X2 seul).
+function getCalibVersion(rec){ return rec.calibVersion || 'v1_1x2_only'; }
+function recordValueBet(fixture, vb){
+  const tracker=loadVBTracker();
+  const key=`${fixture.fixture.id}|${vb.market}|${vb.pick}`;
+  if(tracker.find(t=>t.key===key)) return; // déjà enregistré
+  tracker.push({
+    key, fixtureId:fixture.fixture.id,
+    homeName:fixture.teams.home.name, awayName:fixture.teams.away.name,
+    kickoff:fixture.fixture.date,
+    market:vb.market, pick:vb.pick, odd:vb.odd, edge:vb.edge,
+    calibVersion:CALIBRATION_VERSION,
+    resolved:false, won:null
+  });
+  if(tracker.length>800) tracker.splice(0, tracker.length-800);
+  saveVBTracker(tracker);
+}
+// Détermine si un value bet aurait gagné, à partir du score final. Retourne null si le marché n'est
+// pas gérable de façon fiable ici (HT-FT, mi-temps, etc.) : ces paris ne sont alors pas comptés dans
+// le ROI plutôt que d'être évalués au hasard.
+function evaluateBetOutcome(vb, finalHome, finalAway, homeName, awayName){
+  const tot=finalHome+finalAway;
+  if(vb.market==='Résultat (1X2)'){
+    if(vb.pick===`Victoire ${homeName}`) return finalHome>finalAway;
+    if(vb.pick==='Match nul') return finalHome===finalAway;
+    if(vb.pick===`Victoire ${awayName}`) return finalAway>finalHome;
+  }
+  if(vb.market==='Double Chance'){
+    if(vb.pick===`${homeName} ou Nul`) return finalHome>=finalAway;
+    if(vb.pick===`${homeName} ou ${awayName}`) return finalHome!==finalAway;
+    if(vb.pick===`Nul ou ${awayName}`) return finalAway>=finalHome;
+  }
+  if(vb.market==='Total buts'){
+    const m=vb.pick.match(/(Over|Under) ([\d.]+)/);
+    if(m){ const line=parseFloat(m[2]); return m[1]==='Over' ? tot>line : tot<line; }
+  }
+  if(vb.market==='Les deux équipes marquent'){
+    const btts=finalHome>0 && finalAway>0;
+    return vb.pick==='Oui' ? btts : !btts;
+  }
+  if(vb.market===`${homeName} gagne sans encaisser`) return finalHome>finalAway && finalAway===0;
+  if(vb.market===`${awayName} gagne sans encaisser`) return finalAway>finalHome && finalHome===0;
+  return null;
+}
+async function evaluateVBTracker(){
+  const tracker=loadVBTracker();
+  const unresolved=tracker.filter(t=>!t.resolved);
+  let apiCalls=0;
+  for(const rec of unresolved){
+    if(apiCalls>=20) break;
+    const kickoff=new Date(rec.kickoff);
+    if(Date.now()-kickoff.getTime()<2.5*3600*1000) continue;
+    apiCalls++;
+    const result=await getFixtureResult(rec.fixtureId);
+    if(!result) continue;
+    const won=evaluateBetOutcome(rec, result.home, result.away, rec.homeName, rec.awayName);
+    if(won===null){ rec.resolved=true; rec.skipped=true; continue; } // marché non évaluable, exclu du ROI
+    rec.resolved=true; rec.won=won;
+  }
+  saveVBTracker(tracker);
+  return tracker;
+}
+function computeROI(tracker){
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
+  let staked=0, profit=0, wins=0;
+  evaluated.forEach(rec=>{
+    staked+=1;
+    profit += rec.won ? (rec.odd-1) : -1;
+    if(rec.won) wins++;
+  });
+  return {n:evaluated.length, staked, profit, roi:staked>0?profit/staked*100:null, winRate:evaluated.length>0?wins/evaluated.length*100:null};
+}
+// Compare le ROI "avant/après" un changement de méthode de calibration (cf. CALIBRATION_VERSION),
+// pour vérifier qu'une correction améliore réellement les résultats plutôt que de se fier à une
+// moyenne globale qui mélangerait silencieusement l'ancienne et la nouvelle méthode.
+function computeROIByVersion(tracker){
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
+  const byVersion={};
+  evaluated.forEach(r=>{
+    const v=getCalibVersion(r);
+    if(!byVersion[v]) byVersion[v]={n:0, profit:0};
+    byVersion[v].n++;
+    byVersion[v].profit += r.won ? (r.odd-1) : -1;
+  });
+  return Object.entries(byVersion).map(([version,d])=>({version, n:d.n, roi:d.n>0?d.profit/d.n*100:null}));
+}
+function computeROIByEdgeTier(tracker){
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
+  const tiers=[{label:'🔥 +10%',test:e=>e>=10},{label:'⚡ +6-10%',test:e=>e>=6&&e<10},{label:'+3-6%',test:e=>e<6}];
+  return tiers.map(t=>{
+    const subset=evaluated.filter(r=>t.test(r.edge));
+    let profit=0; subset.forEach(r=>profit+=r.won?(r.odd-1):-1);
+    return {label:t.label, n:subset.length, roi:subset.length>0?profit/subset.length*100:null};
+  });
+}
+// Répartition par marché (toutes tranches d'edge confondues) : permet de voir si un marché précis
+// (ex: Double Chance, BTTS...) tire la performance vers le bas, plutôt qu'un problème général.
+function computeROIByMarket(tracker, edgeFilter){
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped && (!edgeFilter || edgeFilter(t.edge)));
+  const byMarket={};
+  evaluated.forEach(r=>{
+    if(!byMarket[r.market]) byMarket[r.market]={n:0, profit:0};
+    byMarket[r.market].n++;
+    byMarket[r.market].profit += r.won ? (r.odd-1) : -1;
+  });
+  return Object.entries(byMarket)
+    .map(([market,d])=>({market, n:d.n, roi:d.n>0?d.profit/d.n*100:null}))
+    .filter(m=>m.n>=3) // on ignore les marchés avec trop peu de paris pour être lisibles
+    .sort((a,b)=>a.roi-b.roi); // les pires en premier
+}
+function renderVBTrackerPanel(){
+  const el=document.getElementById('vbTrackerPanel'); if(!el) return;
+  const tracker=loadVBTracker();
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
+  const skipped=tracker.filter(t=>t.resolved && t.skipped);
+  const pending=tracker.filter(t=>!t.resolved);
+  const skippedNote = skipped.length>0
+    ? `<div style="font-size:11px;color:#b08900;margin-bottom:8px;">⚠️ ${skipped.length} pari${skipped.length>1?'s':''} enregistré${skipped.length>1?'s':''} sur un marché qu'on ne sait pas vérifier automatiquement (Handicap, Score exact, Clean Sheet, HT-FT, 1ère/2ème MT...) — exclu${skipped.length>1?'s':''} du calcul ci-dessous, donc ce ROI ne couvre qu'une partie de ce que tu as pu jouer réellement.</div>`
+    : '';
+  if(evaluated.length<10){
+    let pendingInfo='';
+    if(pending.length>0){
+      const earliest=pending.reduce((a,b)=>new Date(a.kickoff)<new Date(b.kickoff)?a:b);
+      const readyAt=new Date(new Date(earliest.kickoff).getTime()+2.5*3600*1000);
+      const now=new Date();
+      const diffMin=Math.round((readyAt-now)/60000);
+      pendingInfo = diffMin>0
+        ? `Le prochain pari pourra être vérifié dans environ ${diffMin<60?diffMin+' min':(diffMin/60).toFixed(1)+' h'} (${earliest.homeName} vs ${earliest.awayName}).`
+        : `Au moins un pari devrait déjà être vérifiable (${earliest.homeName} vs ${earliest.awayName}) — appuie sur "Vérifier les résultats".`;
+    }
+    el.innerHTML=skippedNote+`<div class="debug-empty">Échantillon encore trop faible (${evaluated.length} pari${evaluated.length>1?'s':''} évalué${evaluated.length>1?'s':''} sur ${tracker.length} enregistré${tracker.length>1?'s':''}, ${pending.length} en attente). ${pendingInfo}</div>`;
+    return;
+  }
+  const global=computeROI(tracker);
+  const byVersion=computeROIByVersion(tracker);
+  // Le détail par tranche d'edge / par marché ci-dessous ne porte que sur les paris enregistrés avec
+  // la calibration ACTUELLE (CALIBRATION_VERSION) : mélanger avec l'ancienne méthode masquerait
+  // justement l'effet d'une correction comme celle du fit joint 1X2+Over/Under.
+  const currentTracker=tracker.filter(t=>getCalibVersion(t)===CALIBRATION_VERSION);
+  const versionNote = byVersion.length>1
+    ? `<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:2px 0 4px;">Par version de calibration</div>`+
+      byVersion.map(v=>`<div class="debug-log-entry${v.roi<0?' err':' best'}">${v.version}${v.version===CALIBRATION_VERSION?' (actuelle)':''} → ROI ${v.roi>=0?'+':''}${v.roi.toFixed(1)}% (n=${v.n})</div>`).join('')
+    : '';
+  el.innerHTML=skippedNote+`<div style="font-size:11px;color:#8a9ab8;margin-bottom:8px;">${global.n} pari${global.n>1?'s':''} évalué${global.n>1?'s':''} (mise plate 1 unité/pari) · taux de réussite ${global.winRate.toFixed(0)}%</div>`+
+    `<div class="debug-log-entry${global.roi>0?' best':' err'}">ROI global (toutes versions) : ${global.roi>=0?'+':''}${global.roi.toFixed(1)}% (n=${global.n})</div>`+
+    versionNote+
+    (currentTracker.filter(t=>t.resolved&&!t.skipped).length<10
+      ? `<div class="debug-empty" style="margin-top:8px;">Détail par tranche/marché pour la calibration actuelle : encore trop peu de paris évalués (${currentTracker.filter(t=>t.resolved&&!t.skipped).length}).</div>`
+      : `<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Détail — calibration actuelle uniquement</div>`+
+        computeROIByEdgeTier(currentTracker).map(t=>`<div class="debug-log-entry">${t.label} → ROI ${t.roi!==null?(t.roi>=0?'+':'')+t.roi.toFixed(1)+'%':'—'} (n=${t.n})</div>`).join('')+
+        (()=>{
+          const byMarket=computeROIByMarket(currentTracker);
+          const byMarketMidTier=computeROIByMarket(currentTracker, e=>e>=6&&e<10);
+          let extra='';
+          if(byMarket.length>0){
+            extra+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Par marché (tous edges)</div>`+
+              byMarket.map(m=>`<div class="debug-log-entry${m.roi<0?' err':' best'}">${m.market} → ROI ${m.roi>=0?'+':''}${m.roi.toFixed(1)}% (n=${m.n})</div>`).join('');
+          }
+          if(byMarketMidTier.length>0){
+            extra+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Par marché, dans la tranche ⚡ +6-10% seulement</div>`+
+              byMarketMidTier.map(m=>`<div class="debug-log-entry${m.roi<0?' err':' best'}">${m.market} → ROI ${m.roi>=0?'+':''}${m.roi.toFixed(1)}% (n=${m.n})</div>`).join('');
+          }
+          return extra;
+        })());
+}
+async function refreshVBTrackerPanel(){
+  const el=document.getElementById('vbTrackerPanel');
+  if(el) el.innerHTML='<div class="debug-empty">Vérification des résultats en cours...</div>';
+  await evaluateVBTracker();
+  renderVBTrackerPanel();
+}
+
+// --- Rattrapage historique : les cotes 1xBet restent disponibles ~7 jours après un match terminé.
+// Au lieu d'attendre que de nouveaux matchs se jouent un par un, on va chercher des matchs des
+// derniers jours DÉJÀ TERMINÉS, on calcule les value bets sur leurs cotes (encore accessibles), et on
+// vérifie tout de suite puisque le résultat est déjà connu — ça remplit les 2 trackers d'un coup.
+function resolveValueBetNow(fixture, vb) {
+  const tracker = loadVBTracker();
+  const key = `${fixture.fixture.id}|${vb.market}|${vb.pick}`;
+  if (tracker.find(t=>t.key===key)) return false;
+  const won = evaluateBetOutcome(vb, fixture.goals.home, fixture.goals.away, fixture.teams.home.name, fixture.teams.away.name);
+  tracker.push({
+    key, fixtureId:fixture.fixture.id,
+    homeName:fixture.teams.home.name, awayName:fixture.teams.away.name,
+    kickoff:fixture.fixture.date,
+    market:vb.market, pick:vb.pick, odd:vb.odd, edge:vb.edge,
+    calibVersion:CALIBRATION_VERSION,
+    resolved:true, won:won===null?null:won, skipped:won===null
+  });
+  if(tracker.length>800) tracker.splice(0, tracker.length-800);
+  saveVBTracker(tracker);
+  return true;
+}
+function resolvePredictionNow(fixture) {
+  const tracker = loadTracker();
+  const rec = tracker.find(t=>t.fixtureId===fixture.fixture.id && !t.resolved);
+  if (!rec) return;
+  rec.actualResult = fixture.goals.home>fixture.goals.away?'H':fixture.goals.home===fixture.goals.away?'D':'A';
+  rec.resolved = true;
+  saveTracker(tracker);
+}
+let backfillRunning=false;
+const BACKFILL_SEEN_KEY='pronosBackfillSeen_v1';
+function loadBackfillSeen(){ try{ return new Set(JSON.parse(localStorage.getItem(BACKFILL_SEEN_KEY)||'[]')); }catch(e){ return new Set(); } }
+function saveBackfillSeen(set){ try{ localStorage.setItem(BACKFILL_SEEN_KEY, JSON.stringify([...set])); }catch(e){ console.warn('[pronos] Sauvegarde backfillSeen impossible:', e.message); } }
+async function runHistoricalBackfill(daysBack=7, maxFixtures=40){
+  if(backfillRunning) return {aborted:true};
+  backfillRunning=true;
+  const el=document.getElementById('backfillPanel');
+  const seen=loadBackfillSeen();
+  let checked=0, valueBetsFound=0, apiCalls=0, skippedAlreadySeen=0;
+  try{
+    for(let d=1; d<=daysBack; d++){
+      if(checked>=maxFixtures) break;
+      const date=new Date(Date.now()-d*24*3600*1000);
+      const dateStr=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+      let fixtures=null;
+      try{
+        fixtures=await apiGet(`/fixtures?date=${dateStr}`);
+        apiCalls++;
+      }catch(e){
+        console.warn(`[pronos] Rattrapage : erreur fixtures du ${dateStr}:`, e.message);
+        continue;
+      }
+      const finished=(fixtures||[]).filter(f=>DONE_STATUSES.includes(f.fixture.status.short) && f.goals.home!==null);
+      for(const fixture of finished){
+        if(checked>=maxFixtures) break;
+        if(seen.has(fixture.fixture.id)){ skippedAlreadySeen++; continue; } // déjà traité lors d'un rattrapage précédent
+        checked++;
+        seen.add(fixture.fixture.id);
+        if(el) el.innerHTML=`<div class="debug-empty">Rattrapage en cours... ${checked} match${checked>1?'s':''} vérifié${checked>1?'s':''} (${valueBetsFound} value bet${valueBetsFound>1?'s':''} trouvé${valueBetsFound>1?'s':''})</div>`;
+        const cal=await getCalibratedModel(fixture); // enregistre aussi la prédiction Brier au passage si cotes+forme dispo
+        resolvePredictionNow(fixture);
+        if(!cal || !cal.parsed) continue; // pas de cotes 1xBet : rien à évaluer pour le ROI ici
+        const modelProbs=withJointOUProbs(computeModelProbabilities(cal.lh,cal.la), cal);
+        const valueBets=findValueBets(modelProbs,cal.parsed,fixture.teams.home.name,fixture.teams.away.name,cal.lh,cal.la);
+        valueBets.forEach(vb=>{ if(resolveValueBetNow(fixture,vb)) valueBetsFound++; });
+      }
+    }
+  } finally {
+    saveBackfillSeen(seen);
+    backfillRunning=false;
+  }
+  return {checked, valueBetsFound, apiCalls, skippedAlreadySeen};
+}
+async function refreshBackfillPanel(){
+  const el=document.getElementById('backfillPanel');
+  if(el) el.innerHTML='<div class="debug-empty">Rattrapage en cours...</div>';
+  const res=await runHistoricalBackfill();
+  if(el){
+    if(res.aborted){ el.innerHTML='<div class="debug-empty">Un rattrapage est déjà en cours.</div>'; }
+    else el.innerHTML=`<div class="debug-empty">Terminé : ${res.checked} nouveau${res.checked>1?'x':''} match${res.checked>1?'s':''} vérifié${res.checked>1?'s':''}${res.skippedAlreadySeen>0?` (+ ${res.skippedAlreadySeen} déjà vus, ignorés)`:''}, ${res.valueBetsFound} value bet${res.valueBetsFound>1?'s':''} trouvé${res.valueBetsFound>1?'s':''} et résolu${res.valueBetsFound>1?'s':''} immédiatement. Relance "Vérifier les résultats" ci-dessus pour voir le nouveau ROI.</div>`;
+  }
+  renderTrackerPanel();
+  renderVBTrackerPanel();
+}
+
+async function getCalibratedModel(fixture) {
+  const fid = fixture.fixture.id;
+  if (Object.prototype.hasOwnProperty.call(fixtureOddsCache, fid)) return fixtureOddsCache[fid];
+  const home=fixture.teams.home, away=fixture.teams.away;
+  let oddsData=null;
+  try {
+    oddsData = await apiGet(`/odds?fixture=${fid}&bookmaker=${BOOKMAKER_1XBET}`);
+  } catch(e) {
+    console.warn(`[pronos] Cotes 1xBet indisponibles pour fixture ${fid} (${home.name} vs ${away.name}):`, e.message);
+  }
+  const parsed = parseOdds1xbet(oddsData, home.name, away.name);
+  const [homeForm, awayForm] = await Promise.all([getTeamRecentForm(home.id), getTeamRecentForm(away.id)]);
+  const hasForm = homeForm && awayForm;
+
+  if (parsed && parsed.home1x2) {
+    // Cas idéal : cotes 1xBet disponibles. On calibre dessus, puis on mélange légèrement avec la
+    // forme récente (70% cotes / 30% forme) pour capter un changement de forme que la cote n'a pas
+    // encore totalement intégré (petite série, blessure...), sans pour autant s'en écarter trop.
+    const rawH=oddsToProb(parsed.home1x2), rawD=oddsToProb(parsed.draw1x2||2), rawA=oddsToProb(parsed.away1x2);
+    const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
+    // IMPORTANT : un seul (lh,la) alimente TOUTE la matrice de scores (1X2, BTTS, Score exact, HT-FT,
+    // etc.), donc on calcule DEUX calibrations séparées plutôt qu'une seule :
+    // - oddsLh/oddsLa : fit PUR sur le 1X2 uniquement (comme avant le fix Total buts). Utilisé pour
+    //   tout le reste du modèle (1X2, Double Chance, BTTS, Score exact, Handicap, HT-FT, le tracker
+    //   Brier "Fiabilité cotes vs forme"...), pour ne pas dégrader ces marchés-là.
+    // - ouLh/ouLa : fit JOINT 1X2 + Over/Under 1xBet (0.5/1.5/2.5/3.5 quand dispo). Utilisé UNIQUEMENT
+    //   pour dériver les probabilités de "Total buts", là où le fit pur 1X2 produisait les faux edges
+    //   diagnostiqués dans le tracker ROI (cf. panneau Debug).
+    // Sans cette séparation, le fit joint distord aussi le 1X2 lui-même — régression repérée sur le
+    // tracker Brier début juillet 2026 (Cotes 100% redevenu pire que Forme 100%, alors que ce suivi
+    // montrait l'inverse depuis 129+ matchs).
+    const {lh:oddsLh,la:oddsLa}=estimateLambdas(nH,nD,nA);
+    const overTargets=[];
+    [[0.5,'over05','under05'],[1.5,'over15','under15'],[2.5,'over25','under25'],[3.5,'over35','under35']].forEach(([line,ok,uk])=>{
+      if(parsed[ok]) overTargets.push({line, p: pairImpliedProb(parsed[ok], parsed[uk])});
+    });
+    const {lh:ouLh,la:ouLa}=overTargets.length ? estimateLambdas(nH,nD,nA,overTargets) : {lh:oddsLh,la:oddsLa};
+    let lh=oddsLh, la=oddsLa, source='odds';
+    if (hasForm) {
+      const formLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
+      const formLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
+      recordPrediction(fixture, oddsLh, oddsLa, formLh, formLa);
+      // Le suivi (panneau Debug > Fiabilité cotes vs forme) montre de façon constante, sur un
+      // échantillon croissant, que mélanger la forme récente dégrade la précision par rapport aux
+      // cotes seules (100% cotes reste toujours le meilleur score de Brier). On arrête donc d'appliquer
+      // ce mélange aux probabilités affichées, tout en continuant d'enregistrer les prédictions pour
+      // vérifier que ça reste vrai sur un échantillon encore plus grand.
+    }
+    const result={lh,la,ouLh,ouLa,parsed,source};
+    fixtureOddsCache[fid]=result;
+    return result;
+  }
+
+  if (hasForm) {
+    // Pas de cotes 1xBet, mais on a l'historique des 2 équipes : on estime les lambdas à partir de
+    // l'attaque de l'équipe à domicile SPÉCIFIQUEMENT à domicile, et l'attaque de l'équipe à
+    // l'extérieur SPÉCIFIQUEMENT à l'extérieur (une équipe peut être bien plus forte chez elle
+    // qu'en déplacement, ou l'inverse) — plus précis qu'une simple moyenne globale.
+    const lh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
+    const la=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
+    console.warn(`[pronos] Forme domicile/extérieur pour fixture ${fid} : ${home.name} à domicile (buts marqués ${homeForm.home.avgScored.toFixed(2)}/match sur ${homeForm.home.n} matchs, moyenne globale ${homeForm.avgScored.toFixed(2)}) | ${away.name} à l'extérieur (buts marqués ${awayForm.away.avgScored.toFixed(2)}/match sur ${awayForm.away.n} matchs, moyenne globale ${awayForm.avgScored.toFixed(2)})`);
+    const result={lh,la,parsed:null,source:'form'};
+    fixtureOddsCache[fid]=result;
+    return result;
+  }
+
+  fixtureOddsCache[fid] = null;
+  return null;
+}
+
+// Remplace uniquement les probabilités de "Total buts" (Over/Under) par celles issues du fit JOINT
+// 1X2+O/U (cal.ouLh/ouLa), en gardant tout le reste de modelProbs (1X2, BTTS, Score exact, etc.) tel
+// que calculé avec le fit 1X2 pur. Voir le commentaire dans getCalibratedModel pour le pourquoi.
+function withJointOUProbs(modelProbs, cal){
+  if(!cal || cal.ouLh===undefined || (cal.ouLh===cal.lh && cal.ouLa===cal.la)) return modelProbs;
+  const ouProbs=computeModelProbabilities(cal.ouLh, cal.ouLa);
+  return {...modelProbs, pO05:ouProbs.pO05, pO15:ouProbs.pO15, pO25:ouProbs.pO25, pO35:ouProbs.pO35};
+}
+
+function computeRemainingMarketProbs(hG, aG, lhRem, laRem) {
+
+  const M = buildScoreMatrix(lhRem, laRem, 8);
+  let pH=0,pD=0,pA=0,pO05=0,pO15=0,pO25=0,pO35=0,pO45=0,pO55=0,pBTTS=0,pWTNH=0,pWTNA=0,pHomeScores=0,pAwayScores=0;
+  for(let i=0;i<=8;i++) for(let j=0;j<=8;j++){
+    const p=M[i][j], fh=hG+i, fa=aG+j, tot=fh+fa;
+    if(fh>fa)pH+=p; else if(fh===fa)pD+=p; else pA+=p;
+    if(tot>0)pO05+=p; if(tot>1)pO15+=p; if(tot>2)pO25+=p; if(tot>3)pO35+=p; if(tot>4)pO45+=p; if(tot>5)pO55+=p;
+    if(fh>0&&fa>0)pBTTS+=p;
+    if(fh>0)pHomeScores+=p; if(fa>0)pAwayScores+=p;
+    if(fh>fa&&fa===0)pWTNH+=p;
+    if(fa>fh&&fh===0)pWTNA+=p;
+  }
+  return {pH,pD,pA,pO05,pO15,pO25,pO35,pO45,pO55,pBTTS,pWTNH,pWTNA,pHomeScores,pAwayScores};
+}
+
+// Cotes live 1xBet (endpoint /odds/live, distinct du /odds pré-match).
+// La structure exacte n'est pas garantie identique au pré-match : on tente de réutiliser le même
+// parseur (même schéma probable : bookmakers > bets > values), et on logue la réponse brute si ça échoue,
+// pour pouvoir ajuster le parseur si 1xBet/API-Football renvoie un format différent en live.
+// IMPORTANT : on a confirmé, via de vraies réponses de /odds/live, que cet endpoint ne contient
+// AUCUNE attribution de bookmaker (pas de champ "bookmakers", pas d'id) — juste un tableau "odds"
+// générique sur le match. Impossible de garantir que ce sont les cotes de 1xBet spécifiquement.
+// Comme on l'a établi (cf. bug du repli silencieux sur un autre bookmaker), on préfère ne PAS utiliser
+// ces cotes plutôt que de risquer d'afficher "vs 1xBet" sur des données non vérifiées.
+let liveOddsDisabledLogged=false;
+async function getLiveOdds1xbet(fixture) {
+  if(!liveOddsDisabledLogged){
+    liveOddsDisabledLogged=true;
+    console.warn(`[pronos] Cotes live désactivées : /odds/live ne fournit aucune attribution de bookmaker (confirmé sur données réelles), impossible de garantir que ce sont celles de 1xBet. Le mode "confiance du modèle" reste utilisé à la place.`);
+  }
+  return null;
+}
+
+function findLiveValueBets(mp, liveOdds, homeName, awayName) {
+  const valueBets=[];
+  function checkValue(market,pick,modelProb,odd){
+    if(!odd||odd<=1||modelProb===undefined)return;
+    const impliedProb=oddsToProb(odd), edge=modelProb-impliedProb;
+    const threshold = market==='Total buts' ? 0.08 : 0.03; // même ajustement qu'en pré-match (cf. suivi ROI)
+    if(edge>threshold){
+      const mp100=Math.round(modelProb*100), ip100=Math.round(impliedProb*100);
+      valueBets.push({market,pick,modelProb:mp100,impliedProb:ip100,odd,edge:mp100-ip100});
+    }
+  }
+  const o=liveOdds;
+  if(o.home1x2)checkValue('Résultat (1X2)',`Victoire ${homeName}`,mp.pH,o.home1x2);
+  if(o.draw1x2)checkValue('Résultat (1X2)','Match nul',mp.pD,o.draw1x2);
+  if(o.away1x2)checkValue('Résultat (1X2)',`Victoire ${awayName}`,mp.pA,o.away1x2);
+  if(o.over05)checkValue('Total buts','Over 0.5',mp.pO05,o.over05);
+  if(o.under05)checkValue('Total buts','Under 0.5',1-mp.pO05,o.under05);
+  if(o.over15)checkValue('Total buts','Over 1.5',mp.pO15,o.over15);
+  if(o.under15)checkValue('Total buts','Under 1.5',1-mp.pO15,o.under15);
+  if(o.over25)checkValue('Total buts','Over 2.5',mp.pO25,o.over25);
+  if(o.under25)checkValue('Total buts','Under 2.5',1-mp.pO25,o.under25);
+  if(o.over35)checkValue('Total buts','Over 3.5',mp.pO35,o.over35);
+  if(o.under35)checkValue('Total buts','Under 3.5',1-mp.pO35,o.under35);
+  if(o.bttsYes)checkValue('BTTS (les 2 marquent)','Oui',mp.pBTTS,o.bttsYes);
+  if(o.bttsNo)checkValue('BTTS (les 2 marquent)','Non',1-mp.pBTTS,o.bttsNo);
+  if(o.wtnHome)checkValue(`${homeName} gagne sans encaisser`,'Oui',mp.pWTNH,o.wtnHome);
+  if(o.wtnAway)checkValue(`${awayName} gagne sans encaisser`,'Oui',mp.pWTNA,o.wtnAway);
+  return dedupeByMarket(valueBets).sort((a,b)=>b.edge-a.edge);
+}
+
 async function showPredictions(fixture,container,btn) {
   const live=isLive(fixture);
-  if(!live&&container.dataset.loaded==="true"){container.style.display=container.style.display==="none"?"block":"none";btn.textContent=container.style.display==="none"?"👁 Analyser":"🙈 Masquer";return;}
+  const state=matchUIState[fixture.fixture.id];
+  const staleAnalysis = state && state.computedAt && (Date.now()-state.computedAt) > 5*60*1000;
+  if(!live&&container.dataset.loaded==="true"&&!staleAnalysis){
+    container.style.display=container.style.display==="none"?"block":"none";
+    btn.textContent=container.style.display==="none"?"👁 Analyser":"🙈 Masquer";
+    if(matchUIState[fixture.fixture.id]) matchUIState[fixture.fixture.id].expanded = container.style.display!=="none";
+    return;
+  }
+  if(!live&&staleAnalysis){
+    // Les cotes ont pu changer depuis (apparition d'un marché, cote mise à jour...) : on efface le
+    // cache et on relance un vrai calcul au lieu de réafficher un résultat potentiellement périmé.
+    delete fixtureOddsCache[fixture.fixture.id];
+    container.dataset.loaded="false";
+  }
   btn.textContent="🔄 Analyse...";btn.disabled=true;
   try {
     const home=fixture.teams.home,away=fixture.teams.away;let html="";
+    console.warn(`[pronos] Analyse fixture ${fixture.fixture.id} : ${home.name} (id ${home.id}) vs ${away.name} (id ${away.id})`);
     if(live) {
       const elapsed=fixture.fixture.status.elapsed??45,remaining=Math.max(0,90-elapsed);
-      const hG=fixture.goals.home??0,aG=fixture.goals.away??0,sd=hG-aG;
+      const hG=fixture.goals.home??0,aG=fixture.goals.away??0;
       let ls=null;
-      try{const sr=await apiGet(`/fixtures/statistics?fixture=${fixture.fixture.id}`);if(sr&&sr.length>=2){const gS=(ts,t)=>{const s=ts.statistics.find(s=>s.type===t);return s?(parseInt(s.value)||0):0;};const hS=sr.find(t=>t.team.id===home.id)||sr[0],aS=sr.find(t=>t.team.id===away.id)||sr[1];ls={hP:gS(hS,"Ball Possession")||50,aP:gS(aS,"Ball Possession")||50,hSh:gS(hS,"Total Shots"),aSh:gS(aS,"Total Shots"),hShOn:gS(hS,"Shots on Goal"),aShOn:gS(aS,"Shots on Goal"),hC:gS(hS,"Corner Kicks"),aC:gS(aS,"Corner Kicks")};}}catch(e){}
+      try{
+        const sr=await apiGet(`/fixtures/statistics?fixture=${fixture.fixture.id}`);
+        if(sr&&sr.length>=2){const gS=(ts,t)=>{const s=ts.statistics.find(s=>s.type===t);return s?(parseInt(s.value)||0):0;};const hS=sr.find(t=>t.team.id===home.id)||sr[0],aS=sr.find(t=>t.team.id===away.id)||sr[1];ls={hP:gS(hS,"Ball Possession")||50,aP:gS(aS,"Ball Possession")||50,hSh:gS(hS,"Total Shots"),aSh:gS(aS,"Total Shots"),hShOn:gS(hS,"Shots on Goal"),aShOn:gS(aS,"Shots on Goal"),hC:gS(hS,"Corner Kicks"),aC:gS(aS,"Corner Kicks")};}
+      }catch(e){
+        console.warn(`[pronos] Stats live indisponibles pour fixture ${fixture.fixture.id} (${home.name} vs ${away.name}):`, e.message);
+      }
       html=`<div class="live-header-note">🔴 ${elapsed}' | Score: ${hG}-${aG}</div>`;
       if(ls)html+=`<div class="stats-box">📊 <b>${home.name}</b>: ${ls.hP}% poss · ${ls.hSh} tirs (${ls.hShOn} cadrés) · ${ls.hC} corners<br>📊 <b>${away.name}</b>: ${ls.aP}% poss · ${ls.aSh} tirs (${ls.aShOn} cadrés) · ${ls.aC} corners</div>`;
-      let pH,pD,pA;const dom=ls?(ls.hP-50)/100:0;
-      if(remaining<=5){pH=sd>0?0.93:sd<0?0.03:0.12;pD=sd===0?0.82:0.05;pA=sd<0?0.93:sd>0?0.03:0.12;}
-      else if(remaining<=20){pH=sd>0?0.75:sd<0?0.12:0.28+dom*0.25;pD=sd===0?0.48:0.13;pA=sd<0?0.75:sd>0?0.12:0.24-dom*0.25;}
-      else if(remaining<=45){pH=sd>0?0.58:sd<0?0.22:0.33+dom*0.15;pD=sd===0?0.38:0.20;pA=sd<0?0.58:sd>0?0.22:0.29-dom*0.15;}
-      else{pH=sd>0?0.48:sd<0?0.28:0.35+dom*0.1;pD=sd===0?0.30:0.22;pA=sd<0?0.48:sd>0?0.28:0.32-dom*0.1;}
-      const sR=pH+pD+pA;pH/=sR;pD/=sR;pA/=sR;
-      html+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin-bottom:6px;">📊 Probabilités en temps réel</div>`;
-      [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}].sort((a,b)=>b.p-a.p).forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
-      const tG=hG+aG,gr=elapsed>0?tG/elapsed:0,proj=tG+gr*remaining,pO25=tG>=3?1:Math.max(0.05,Math.min(0.95,(proj-2.5)/2+0.5));
-      html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${pO25>=0.5?'Plus de 2.5 buts':'Moins de 2.5 buts'}</div>${confidenceBarHTML(pO25>=0.5?pO25:1-pO25)}</div>`;
-    } else {
-      html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
-      let oddsData=null;
-      try{oddsData=await apiGet(`/odds?fixture=${fixture.fixture.id}&bookmaker=${BOOKMAKER_1XBET}`);}catch(e){}
-      const parsed=parseOdds1xbet(oddsData,home.name,away.name);
-      if(!parsed||!parsed.home1x2){
-        html+=`<div class="no-odds">⚠️ Cotes 1xBet non disponibles pour ce match.</div>`;
+
+      const cal = await getCalibratedModel(fixture);
+      let pH,pD,pA,extraRows=[],liveValueBets=null;
+      if (cal) {
+        if(cal.source==='form') html+=`<div class="no-odds" style="padding:4px 0 8px;text-align:left;">📈 Cotes 1xBet indisponibles : modèle basé sur la forme récente des 2 équipes.</div>`;
+        else if(cal.source==='odds+form') html+=`<div class="no-odds" style="padding:4px 0 8px;text-align:left;">🎯 Modèle basé sur les cotes 1xBet, affiné avec la forme récente.</div>`;
+        // Ancré sur le modèle Poisson pré-match (calibré sur les cotes 1xBet et/ou la forme récente) :
+        // on simule uniquement les buts du temps restant, puis on les ajoute au score actuel.
+        const frac = remaining/90;
+        const dom = ls ? (ls.hP-50)/100 : 0;
+        // La possession/domination influence légèrement la répartition des buts restants entre les 2 équipes
+        const lhRem = Math.max(0.02, cal.lh*frac*(1+dom*0.3));
+        const laRem = Math.max(0.02, cal.la*frac*(1-dom*0.3));
+        const mp = computeRemainingMarketProbs(hG, aG, lhRem, laRem);
+        pH=mp.pH;pD=mp.pD;pA=mp.pA;
+
+        // Tentative de comparaison à de vraies cotes live 1xBet (edge réel, comme en pré-match)
+        const liveOdds = await getLiveOdds1xbet(fixture);
+        if (liveOdds) liveValueBets = findLiveValueBets(mp, liveOdds, home.name, away.name);
+
+        // On ne garde que les marchés encore réellement incertains (ni quasi acquis, ni quasi exclus par le score actuel)
+        const isOpen = p => p>0.04 && p<0.96;
+        const candidates=[
+          {label:'Plus de 1.5 but (total)',p:mp.pO15},
+          {label:'Plus de 2.5 but (total)',p:mp.pO25},
+          {label:'Plus de 3.5 but (total)',p:mp.pO35},
+          {label:'Plus de 4.5 but (total)',p:mp.pO45},
+          {label:'Plus de 5.5 but (total)',p:mp.pO55},
+          {label:'Les deux équipes marquent',p:mp.pBTTS},
+          {label:`${home.name} ${hG>0?'marque encore':'marque'}`,p:mp.pHomeScores},
+          {label:`${away.name} ${aG>0?'marque encore':'marque'}`,p:mp.pAwayScores},
+          {label:`${home.name} gagne sans encaisser`,p:mp.pWTNH},
+          {label:`${away.name} gagne sans encaisser`,p:mp.pWTNA},
+        ].filter(r=>isOpen(r.p));
+        // Priorité aux marchés les plus incertains (proches de 50%), qui sont les plus utiles à suivre en live
+        candidates.sort((a,b)=>Math.abs(a.p-0.5)-Math.abs(b.p-0.5));
+        extraRows = candidates.slice(0,4);
+        // Si tout est déjà décidé par le score actuel (gros score, fin de match...), on ne force plus
+        // l'affichage d'un marché déjà résolu : le 1X2 reste seul, c'est plus honnête.
       } else {
-        const rawH=oddsToProb(parsed.home1x2),rawD=oddsToProb(parsed.draw1x2||2),rawA=oddsToProb(parsed.away1x2);
-        const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
-        const {lh,la}=estimateLambdas(nH,nD,nA);
-        const modelProbs=computeModelProbabilities(lh,la);
-        const valueBets=findValueBets(modelProbs,parsed,home.name,away.name);
+        // Repli si les cotes 1xBet ne sont pas disponibles : heuristique basée sur score/temps/possession
+        const sd=hG-aG, dom = ls?(ls.hP-50)/100:0;
+        if(remaining<=5){pH=sd>0?0.93:sd<0?0.03:0.12;pD=sd===0?0.82:0.05;pA=sd<0?0.93:sd>0?0.03:0.12;}
+        else if(remaining<=20){pH=sd>0?0.75:sd<0?0.12:0.28+dom*0.25;pD=sd===0?0.48:0.13;pA=sd<0?0.75:sd>0?0.12:0.24-dom*0.25;}
+        else if(remaining<=45){pH=sd>0?0.58:sd<0?0.22:0.33+dom*0.15;pD=sd===0?0.38:0.20;pA=sd<0?0.58:sd>0?0.22:0.29-dom*0.15;}
+        else{pH=sd>0?0.48:sd<0?0.28:0.35+dom*0.1;pD=sd===0?0.30:0.22;pA=sd<0?0.48:sd>0?0.28:0.32-dom*0.1;}
+        const sR=pH+pD+pA;pH/=sR;pD/=sR;pA/=sR;
+        // Avant, le taux de but observé (souvent instable en tout début de match) était extrapolé
+        // linéairement sur tout le temps restant, ce qui donnait des projections absurdes (ex: 1 but
+        // à la 11e minute → 8 buts projetés sur 90 min). On mélange maintenant ce taux avec une
+        // moyenne de référence (2.6 buts/match), pondérée par un "temps équivalent" de 20 minutes,
+        // puis on calcule une vraie probabilité Poisson sur les buts restants au lieu d'une règle de trois.
+        const tG=hG+aG;
+        // Quand les stats live existent, le volume de tirs cadrés est un signal plus stable que le
+        // nombre de buts déjà marqués (le but est un évènement rare et bruité, surtout tôt dans le match) :
+        // on estime un "rythme d'attaque" à partir des tirs, et on prend le plus informatif des deux.
+        const xgSoFar = ls ? (ls.hShOn*0.3 + ls.aShOn*0.3 + Math.max(0,ls.hSh-ls.hShOn)*0.04 + Math.max(0,ls.aSh-ls.aShOn)*0.04) : tG;
+        const paceGoals = ls ? Math.max(tG, xgSoFar) : tG;
+        const priorRatePerMin=2.6/90, priorMinutes=20;
+        const effectiveRate=(paceGoals+priorRatePerMin*priorMinutes)/(elapsed+priorMinutes);
+        const lambdaRemaining=effectiveRate*remaining;
+        function pOverLine(line){
+          const goalsNeeded=Math.max(0,Math.floor(line)+1-tG); // buts restants nécessaires pour dépasser cette ligne
+          if(tG>line) return 1; // déjà dépassée par le score actuel : ce n'est plus une prédiction, c'est un fait
+          let pUnder=0;
+          for(let k=0;k<goalsNeeded;k++) pUnder+=poissonProb(lambdaRemaining,k);
+          return Math.max(0.05,Math.min(0.95,1-pUnder));
+        }
+        const isOpenOU = p => p>0.04 && p<0.96;
+        const ouCandidates=[1.5,2.5,3.5,4.5].map(line=>({label:`Plus de ${line} but (total)`,p:pOverLine(line)})).filter(r=>isOpenOU(r.p));
+        // On garde la ligne la plus informative (la plus proche de 50%) ; si toutes les lignes sont déjà
+        // décidées par le score actuel (ex: 2-2 rend "+2.5" trivialement vrai), on ne montre plus ça
+        // comme un "pari" puisque ce n'est plus une prédiction.
+        ouCandidates.sort((a,b)=>Math.abs(a.p-0.5)-Math.abs(b.p-0.5));
+        extraRows=ouCandidates.slice(0,2);
+        html+=`<div class="no-odds" style="padding:8px 0;text-align:left;">⚠️ Cotes 1xBet indisponibles : estimation basée sur le score/temps${ls?' + statistiques live':''} uniquement.</div>`;
+        if(!ls){
+          // Ni cotes, ni stats : la fiabilité est nettement plus faible. On le dit clairement plutôt
+          // que d'afficher un pourcentage avec une fausse impression de précision, et on resserre
+          // l'intervalle affiché pour ne pas paraître trop catégorique.
+          html+=`<div class="no-odds" style="padding:4px 0 8px;text-align:left;color:#9b2c2c;">📉 Aucune statistique live disponible non plus pour ce match : fiabilité réduite, à prendre avec prudence.</div>`;
+          pH=Math.max(0.12,Math.min(0.80,pH));pD=Math.max(0.12,Math.min(0.50,pD));pA=Math.max(0.12,Math.min(0.80,pA));
+          const sR2=pH+pD+pA;pH/=sR2;pD/=sR2;pA/=sR2;
+          extraRows=extraRows.map(r=>({label:r.label,p:Math.max(0.10,Math.min(0.85,r.p))}));
+        }
+      }
+      const all1X2 = [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}];
+      if (liveValueBets && liveValueBets.length>0) {
+        html+=renderTopPick(liveValueBets[0]);
+        const rest=liveValueBets.slice(1);
+        if(rest.length>0){
+          html+=`<div style="font-size:11px;color:#8a9ab8;margin:4px 0 10px;">${rest.length} autre${rest.length>1?'s':''} opportunité${rest.length>1?'s':''} en direct</div>`;
+          html+=rest.map(renderValueBet).join("");
+        }
+      } else {
+        const topPick = [...all1X2,...extraRows].reduce((best,r)=>r.p>best.p?r:best, all1X2[0]);
+        html+=renderTopPickLive(topPick.label, topPick.p, !cal);
+      }
+      html+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin-bottom:6px;">📊 Probabilités en temps réel</div>`;
+      all1X2.sort((a,b)=>b.p-a.p).forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+      extraRows.forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+    } else {
+      const cal = await getCalibratedModel(fixture);
+      if(!cal){
+        html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
+        html+=`<div class="no-odds">⚠️ Cotes 1xBet non disponibles, et historique récent introuvable pour ce match.</div>`;
+      } else if (cal.source==='form') {
+        // Pas de cotes 1xBet pour ce match : on n'a rien à comparer, donc pas de "value bet" possible,
+        // mais on peut quand même donner des probabilités basées sur la forme récente des 2 équipes
+        // (nettement plus fiable que la simple heuristique score/temps).
+        html=`<div class="odds-header">📊 Estimation (forme récente)</div>`;
+        html+=`<div class="no-odds" style="padding:6px 0 14px;">⚠️ Cotes 1xBet indisponibles pour ce match : estimation basée sur les derniers matchs de chaque équipe (pas de comparaison à une cote possible).</div>`;
+        const modelProbs=computeModelProbabilities(cal.lh,cal.la);
+        [{label:`Victoire ${home.name}`,p:modelProbs.pH},{label:'Match nul',p:modelProbs.pD},{label:`Victoire ${away.name}`,p:modelProbs.pA},{label:'BTTS Oui',p:modelProbs.pBTTS},{label:'Over 2.5',p:modelProbs.pO25}].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+        const fhFav=[{label:`1ère MT : ${home.name}`,p:modelProbs.pFH_H},{label:'1ère MT : Nul',p:modelProbs.pFH_D},{label:`1ère MT : ${away.name}`,p:modelProbs.pFH_A}].sort((a,b)=>b.p-a.p)[0];
+        const shFav=[{label:`2ème MT : ${home.name}`,p:modelProbs.pSH_H},{label:'2ème MT : Nul',p:modelProbs.pSH_D},{label:`2ème MT : ${away.name}`,p:modelProbs.pSH_A}].sort((a,b)=>b.p-a.p)[0];
+        [fhFav,shFav].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label} (favori)</div>${confidenceBarHTML(r.p)}</div>`;});
+      } else {
+        html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
+        const {lh,la,parsed}=cal;
+        const modelProbs=withJointOUProbs(computeModelProbabilities(lh,la), cal);
+        const valueBets=findValueBets(modelProbs,parsed,home.name,away.name,lh,la);
         if(valueBets.length===0){
           html+=`<div class="no-odds">✅ Aucun value bet détecté.<br>Les cotes semblent correctement évaluées.</div>`;
         } else {
-          html+=`<div style="font-size:11px;color:#8a9ab8;margin-bottom:10px;">${valueBets.length} opportunité${valueBets.length>1?'s':''} · Trié par avantage</div>`;
-          html+=valueBets.map(renderValueBet).join("");
+          valueBets.forEach(vb=>recordValueBet(fixture, vb));
+          html+=renderTopPick(valueBets[0]);
+          const rest=valueBets.slice(1);
+          if(rest.length>0){
+            html+=`<div style="font-size:11px;color:#8a9ab8;margin:4px 0 10px;">${rest.length} autre${rest.length>1?'s':''} opportunité${rest.length>1?'s':''} · Trié par avantage</div>`;
+            html+=rest.map(renderValueBet).join("");
+          }
         }
-        html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:12px 0 6px;padding-top:10px;border-top:1px dashed #e0e4ee;text-transform:uppercase;letter-spacing:0.5px;">Probabilités du modèle</div>`;
+        html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:12px 0 6px;padding-top:10px;border-top:1px dashed #e0e4ee;text-transform:uppercase;letter-spacing:0.5px;">Probabilités du modèle${cal.source==='odds+form'?' (cotes + forme récente)':''}</div>`;
         [{label:`Victoire ${home.name}`,p:modelProbs.pH},{label:'Match nul',p:modelProbs.pD},{label:`Victoire ${away.name}`,p:modelProbs.pA},{label:'BTTS Oui',p:modelProbs.pBTTS},{label:'Over 2.5',p:modelProbs.pO25}].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+        const fhFav=[{label:`1ère MT : ${home.name}`,p:modelProbs.pFH_H},{label:'1ère MT : Nul',p:modelProbs.pFH_D},{label:`1ère MT : ${away.name}`,p:modelProbs.pFH_A}].sort((a,b)=>b.p-a.p)[0];
+        const shFav=[{label:`2ème MT : ${home.name}`,p:modelProbs.pSH_H},{label:'2ème MT : Nul',p:modelProbs.pSH_D},{label:`2ème MT : ${away.name}`,p:modelProbs.pSH_A}].sort((a,b)=>b.p-a.p)[0];
+        [fhFav,shFav].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label} (favori)</div>${confidenceBarHTML(r.p)}</div>`;});
       }
       container.dataset.loaded="true";
     }
     container.innerHTML=html;container.style.display="block";
     btn.textContent=live?"🔄 Recalculer":"🙈 Masquer";
     btn.className=live?"pred-btn live-btn":"pred-btn";
+    // Sauvegarde l'état pour survivre au rafraîchissement auto (toutes les 2 min)
+    matchUIState[fixture.fixture.id] = {expanded:true, html, btnLabel:btn.textContent, btnClass:btn.className, computedAt:Date.now()};
   } catch(e) {
     container.innerHTML=`<div style="color:#9b2c2c;font-size:12px;">⚠️ Erreur : ${e.message}</div>`;
     container.style.display="block";btn.textContent="👁 Analyser";
@@ -311,26 +1372,59 @@ function renderMatch(fixture) {
   const home=fixture.teams.home,away=fixture.teams.away;
   const kickoff=new Date(fixture.fixture.date);
   const timeStr=kickoff.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
+  if(timeStr==="00:00"){
+    console.warn(`[pronos] Heure 00:00 pour fixture ${fixture.fixture.id} (${home.name} vs ${away.name}) : date brute API = "${fixture.fixture.date}", statut = "${fixture.fixture.status.long}" (${fixture.fixture.status.short})`);
+  }
   const elapsed=fixture.fixture.status.elapsed;
+  const minutesSinceKickoff=(Date.now()-kickoff.getTime())/60000;
   let tb;
-  if(isLive(fixture))tb=`<span class="badge-live">${elapsed?elapsed+"'":"Live"}</span>`;
+  const stale = isStaleLive(fixture);
+  if(stale){
+    console.warn(`[pronos] Statut live probablement figé pour fixture ${fixture.fixture.id} (${home.name} vs ${away.name}) : ${minutesSinceKickoff.toFixed(0)} min réelles depuis le coup d'envoi, mais statut toujours "${elapsed}'" (${fixture.fixture.status.long}). Basculé vers Terminés.`);
+    const sc=fixture.goals.home!==null?`${fixture.goals.home}-${fixture.goals.away}`:"?";
+    tb=`<span class="badge-done" style="color:#b08900;" title="Dernier score connu, statut jamais confirmé terminé par l'API">⚠️ ${sc} (non confirmé)</span>`;
+  }
+  else if(isLive(fixture)){
+    tb=`<span class="badge-live">${elapsed?elapsed+"'":"Live"}</span>`;
+  }
   else if(isFinished(fixture)){const sc=fixture.goals.home!==null?`${fixture.goals.home}-${fixture.goals.away}`:"FT";tb=`<span class="badge-done">✅ ${sc}</span>`;}
+  else if(isUpcoming(fixture) && minutesSinceKickoff>70){
+    // Le coup d'envoi est passé depuis longtemps mais l'API n'a jamais mis à jour le statut du match
+    // (fréquent sur des amicaux peu suivis, sans flux live fiable) : on le signale au lieu de faire
+    // comme si le match n'avait pas encore commencé.
+    tb=`<span class="time-badge" style="color:#b08900;" title="Statut non mis à jour par l'API">⚠️ ${timeStr}</span>`;
+  }
   else tb=`<span class="time-badge">${timeStr}</span>`;
   const ss=(isLive(fixture)||isFinished(fixture))&&fixture.goals.home!==null;
   const card=document.createElement("div");card.className="card";
-  card.innerHTML=`<div class="card-top"><span class="card-round">${fixture.league.round||""}</span>${tb}</div><div class="teams-row"><div class="team-block"><img src="${home.logo}" onerror="this.style.display='none'" style="width:20px;height:20px;object-fit:contain;flex-shrink:0" alt=""/><span class="team-name">${home.name}</span></div><div class="score-block">${ss?`<span class="score">${fixture.goals.home}</span><span class="score-sep">-</span><span class="score">${fixture.goals.away}</span>`:`<span class="vs-text">VS</span>`}</div><div class="team-block away"><img src="${away.logo}" onerror="this.style.display='none'" style="width:20px;height:20px;object-fit:contain;flex-shrink:0" alt=""/><span class="team-name">${away.name}</span></div></div><button class="pred-btn${isLive(fixture)?" live-btn":""}">👁 Analyser</button><div class="predictions" style="display:none"></div>`;
+  card.innerHTML=`<div class="card-top"><span class="card-round">${fixture.league.round||""}</span>${tb}</div><div class="teams-row"><div class="team-block"><img src="${home.logo}" onerror="this.style.display='none'" style="width:20px;height:20px;object-fit:contain;flex-shrink:0" alt=""/><span class="team-name">${home.name}</span></div><div class="score-block">${ss?`<span class="score">${fixture.goals.home}</span><span class="score-sep">-</span><span class="score">${fixture.goals.away}</span>`:`<span class="vs-text">VS</span>`}</div><div class="team-block away"><img src="${away.logo}" onerror="this.style.display='none'" style="width:20px;height:20px;object-fit:contain;flex-shrink:0" alt=""/><span class="team-name">${away.name}</span></div></div><button class="pred-btn${(isLive(fixture)&&!stale)?" live-btn":""}">👁 Analyser</button><div class="predictions" style="display:none"></div>`;
   const btn=card.querySelector(".pred-btn"),pc=card.querySelector(".predictions");
   btn.addEventListener("click",()=>showPredictions(fixture,pc,btn));
+
+  const saved = matchUIState[fixture.fixture.id];
+  if (saved && saved.expanded) {
+    if (isLive(fixture)) {
+      // Le score/temps a pu changer depuis le dernier calcul : on relance le calcul en direct.
+      showPredictions(fixture,pc,btn);
+    } else {
+      pc.innerHTML = saved.html;
+      pc.style.display = "block";
+      pc.dataset.loaded = "true";
+      btn.textContent = saved.btnLabel;
+      btn.className = saved.btnClass;
+    }
+  }
   return card;
 }
 
-function renderLeagueGroup(leagueName,countryName,fixtures,hasLive) {
+function renderLeagueGroup(leagueId,leagueName,countryName,fixtures,hasLive) {
   const w=document.createElement("div");w.className="league-group";
+  const isOpen = !!leagueOpenState[leagueId];
   const h=document.createElement("div");h.className="league-header"+(hasLive?" live-header":"");
-  h.innerHTML=`<span class="league-flag">${countryFlag(countryName)}</span><span class="league-title">${formatLeagueName(leagueName,countryName)}</span>${hasLive?`<span class="league-live-badge">LIVE</span>`:""}<span class="league-count${hasLive?" live-count":""}">${fixtures.length}</span><span class="league-chevron">▼</span>`;
-  const mc=document.createElement("div");mc.className="league-matches";
+  h.innerHTML=`<span class="league-flag">${countryFlag(countryName)}</span><span class="league-title">${formatLeagueName(leagueName,countryName)}</span>${hasLive?`<span class="league-live-badge">LIVE</span>`:""}<span class="league-count${hasLive?" live-count":""}">${fixtures.length}</span><span class="league-chevron${isOpen?" open":""}">▼</span>`;
+  const mc=document.createElement("div");mc.className="league-matches"+(isOpen?" open":"");
   fixtures.forEach(f=>mc.appendChild(renderMatch(f)));
-  h.addEventListener("click",()=>{const o=mc.classList.toggle("open");h.querySelector(".league-chevron").classList.toggle("open",o);});
+  h.addEventListener("click",()=>{const o=mc.classList.toggle("open");h.querySelector(".league-chevron").classList.toggle("open",o);leagueOpenState[leagueId]=o;});
   w.appendChild(h);w.appendChild(mc);return w;
 }
 
@@ -339,11 +1433,19 @@ function renderTab(fixtures) {
   ml.innerHTML="";fn.innerHTML="";
   if(fixtures.length===0){ml.innerHTML=`<div class="empty-tab">Aucun match dans cet onglet.</div>`;return;}
   const bl={};
-  fixtures.forEach(f=>{const k=`${f.league.id}`;if(!bl[k])bl[k]={name:f.league.name,country:f.league.country,fixtures:[]};bl[k].fixtures.push(f);});
-  Object.values(bl).sort((a,b)=>leaguePriority(a.name)-leaguePriority(b.name)).forEach(g=>{
-    const hl=g.fixtures.some(f=>isLive(f));
+  fixtures.forEach(f=>{const k=`${f.league.id}`;if(!bl[k])bl[k]={id:k,name:f.league.name,country:f.league.country,fixtures:[]};bl[k].fixtures.push(f);});
+  Object.values(bl).forEach(g=>{
+    g.hasLive=g.fixtures.some(f=>isLive(f)&&!isStaleLive(f));
+    g.earliest=Math.min(...g.fixtures.map(f=>new Date(f.fixture.date).getTime()));
+  });
+  // Les groupes avec un match en direct remontent en premier ; sinon, les matchs les plus proches
+  // dans le temps (coup d'envoi le plus proche) apparaissent en haut.
+  Object.values(bl).sort((a,b)=>{
+    if(a.hasLive!==b.hasLive) return a.hasLive?-1:1;
+    return a.earliest-b.earliest;
+  }).forEach(g=>{
     g.fixtures.sort((a,b)=>{const pa=isLive(a)?0:isUpcoming(a)?1:2,pb=isLive(b)?0:isUpcoming(b)?1:2;if(pa!==pb)return pa-pb;return new Date(a.fixture.date)-new Date(b.fixture.date);});
-    ml.appendChild(renderLeagueGroup(g.name,g.country,g.fixtures,hl));
+    ml.appendChild(renderLeagueGroup(g.id,g.name,g.country,g.fixtures,g.hasLive));
   });
   fn.innerHTML="🔥 +10% edge fort · ⚡ +6% solide · +3% léger. Joue avec prudence.";
   fn.className="footer-note";
@@ -353,35 +1455,37 @@ function switchTab(tab) {
   currentTab=tab;
   ["upcoming","live","done"].forEach(t=>document.getElementById(`tab${t.charAt(0).toUpperCase()+t.slice(1)}`).classList.toggle("active",t===tab));
   let fx;
-  if(tab==="live")fx=allFixtures.filter(f=>isLive(f));
+  if(tab==="live")fx=allFixtures.filter(f=>isLive(f)&&!isStaleLive(f));
   else if(tab==="upcoming")fx=allFixtures.filter(f=>isUpcoming(f));
-  else fx=allFixtures.filter(f=>isFinished(f));
+  else fx=allFixtures.filter(f=>isFinished(f)||isStaleLive(f));
   renderTab(fx);
-  const lc=allFixtures.filter(f=>isLive(f)).length;
+  const lc=allFixtures.filter(f=>isLive(f)&&!isStaleLive(f)).length;
   document.getElementById("tabLive").innerHTML=`<span class="live-dot"></span>EN DIRECT${lc>0?` (${lc})`:""}`;
   document.getElementById("tabUpcoming").textContent=`AVANT-MATCH (${allFixtures.filter(f=>isUpcoming(f)).length})`;
-  document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)).length})`;
+  document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)||isStaleLive(f)).length})`;
 }
 
 async function loadFixtures(silent=false) {
   const se=document.getElementById("status"),eb=document.getElementById("errorBox"),rb=document.getElementById("refreshBtn");
-  if(!silent){se.style.display="block";se.innerHTML='<span class="spin">🔄</span> Chargement...';eb.innerHTML="";document.getElementById("matchList").innerHTML="";}
+  let tickTimer=null;
+  if(!silent){
+    eb.innerHTML="";document.getElementById("matchList").innerHTML="";
+    se.style.display="block";
+    const startedAt=Date.now();
+    const updateTick=()=>{ se.innerHTML=`<span class="spin">🔄</span> Chargement... (${Math.floor((Date.now()-startedAt)/1000)}s)`; };
+    updateTick();
+    tickTimer=setInterval(updateTick,1000);
+  }
   try {
     const [dateData,liveData]=await Promise.all([apiGet(`/fixtures?date=${todayISO()}`),apiGet(`/fixtures?live=all`).catch(()=>[])]);
     const lm={};(liveData||[]).forEach(f=>{lm[f.fixture.id]=f;});
-    const merged=(dateData||[]).map(f=>lm[f.fixture.id]||f);
-    (liveData||[]).forEach(f=>{if(!merged.find(m=>m.fixture.id===f.fixture.id))merged.push(f);});
-    allFixtures=merged.sort((a,b)=>new Date(a.fixture.date)-new Date(b.fixture.date));
-    se.style.display="none";rb.style.display="flex";
-    switchTab(currentTab);
-  } catch(e) {
-    if(!silent){se.style.display="none";eb.innerHTML=`<div class="error-box">⚠️ Impossible de récupérer les matchs.</div>`;rb.style.display="flex";}
-  }
-}
-
-document.getElementById("dateLabel").textContent=new Date().toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"});
-loadFixtures();
-setInterval(()=>loadFixtures(true),2*60*1000);
-</script>
-</body>
-</html>
+    // Vérifie que les 2 appels API s'accordent sur les noms d'équipes pour un même ID de match :
+    // si ce n'est pas le cas, c'est une incohérence dans les données de l'API elle-même (pas dans
+    // notre logique de fusion), utile à savoir pour diagnostiquer un futur cas de nom d'équipe erroné.
+    (dateData||[]).forEach(f=>{
+      const live=lm[f.fixture.id];
+      if(live && (live.teams.away.name!==f.teams.away.name || live.teams.home.name!==f.teams.home.name)){
+        console.warn(`[pronos] Incohérence API pour fixture ${f.fixture.id} : /fixtures?date= dit "${f.teams.home.name} vs ${f.teams.away.name}", /fixtures?live=all dit "${live.teams.home.name} vs ${live.teams.away.name}"`);
+      }
+    });
+    
