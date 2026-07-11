@@ -116,6 +116,7 @@
     <button class="tab-btn" id="tabDone" onclick="switchTab('done')">TERMINÉS</button>
   </div>
 </div>
+<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-11-4</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
@@ -286,19 +287,16 @@ function todayISO() {
 // Délai d'expiration sur chaque appel API : sans ça, si le proxy CORS Val Town ou l'API-Football
 // reste bloqué sans jamais répondre (ni succès, ni erreur HTTP), l'app restait figée sur "Chargement..."
 // indéfiniment, sans aucun message pour comprendre pourquoi.
+// NOTE : on n'utilise PAS AbortController/AbortSignal ici. Dans certains environnements qui relaient
+// fetch() via postMessage entre fenêtres (ex: l'aperçu de fichier intégré à Claude), un AbortSignal
+// passé en option de fetch fait planter l'appel ("AbortSignal object could not be cloned") car cet
+// objet n'est pas sérialisable. Un simple Promise.race avec un timer fait le même travail sans ce risque.
 const API_TIMEOUT_MS = 15000;
+function timeoutPromise(ms){
+  return new Promise((_,reject)=>setTimeout(()=>reject(new Error(`Le serveur (proxy Val Town / API-Football) n'a pas répondu en ${ms/1000}s. Réessaie dans un instant.`)), ms));
+}
 async function apiGet(path) {
-  const controller = new AbortController();
-  const timer = setTimeout(()=>controller.abort(), API_TIMEOUT_MS);
-  let res;
-  try {
-    res = await fetch(`${API_BASE}${path}`, {signal: controller.signal});
-  } catch(e) {
-    if (e.name === 'AbortError') throw new Error(`Le serveur (proxy Val Town / API-Football) n'a pas répondu en ${API_TIMEOUT_MS/1000}s. Réessaie dans un instant.`);
-    throw e;
-  } finally {
-    clearTimeout(timer);
-  }
+  const res = await Promise.race([fetch(`${API_BASE}${path}`), timeoutPromise(API_TIMEOUT_MS)]);
   if (!res.ok) throw new Error(`Erreur API (${res.status})`);
   const json = await res.json();
   if (json.errors && Object.keys(json.errors).length > 0) throw new Error(JSON.stringify(json.errors));
@@ -1488,9 +1486,3 @@ function applySearchFilter(){
 }
 
 function switchTab(tab) {
-  currentTab=tab;
-  ["upcoming","live","done"].forEach(t=>document.getElementById(`tab${t.charAt(0).toUpperCase()+t.slice(1)}`).classList.toggle("active",t===tab));
-  let fx;
-  if(tab==="live")fx=allFixtures.filter(f=>isLive(f)&&!isStaleLive(f));
-  else if(tab==="upcoming")fx=allFixtures.filter(f=>isUpcoming(f));
-  else fx=allFixtures.filter(f=>isFinished(f)||isStaleLive(f)||isStaleUpcomin
