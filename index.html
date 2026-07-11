@@ -72,6 +72,24 @@
   .empty-tab { text-align: center; margin-top: 60px; color: #8a9ab8; font-size: 14px; }
   .spin { animation: spin 1s linear infinite; display: inline-block; }
   @keyframes spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
+  .debug-fab { position: fixed; bottom: 16px; right: 16px; z-index: 200; background: #14161c; color: #fff; border: none; border-radius: 24px; padding: 10px 16px; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+  .debug-badge { background: #e63946; color: #fff; border-radius: 10px; font-size: 11px; padding: 1px 6px; }
+  .debug-panel { position: fixed; inset: 0; z-index: 300; background: rgba(0,0,0,0.4); display: none; align-items: flex-end; }
+  .debug-panel.open { display: flex; }
+  .debug-panel-inner { background: #fff; width: 100%; max-height: 85vh; overflow-y: auto; border-radius: 16px 16px 0 0; padding: 16px; }
+  .debug-panel-header { display: flex; justify-content: space-between; align-items: center; font-size: 16px; font-weight: 800; margin-bottom: 12px; }
+  .debug-panel-actions { display: flex; gap: 6px; }
+  .debug-panel-btn { font-size: 11px; font-weight: 700; padding: 6px 10px; border-radius: 8px; border: none; background: #1a3a6b; color: #fff; }
+  .debug-panel-btn.copy { background: #1a3a6b; }
+  .debug-panel-btn.clear { background: #e8ecf4; color: #1a3a6b; }
+  .debug-panel-btn.close { background: #e63946; }
+  .debug-section { margin-bottom: 16px; }
+  .debug-section-title { font-size: 13px; font-weight: 800; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .debug-log { max-height: 180px; overflow-y: auto; background: #f8f9fb; border-radius: 8px; padding: 8px; }
+  .debug-log-entry { font-size: 11px; padding: 4px 0; border-bottom: 1px solid #eee; color: #333; }
+  .debug-log-entry.err { color: #9b2c2c; }
+  .debug-log-entry.best { color: #1a6b3a; font-weight: 700; }
+  .debug-empty { font-size: 11px; color: #8a9ab8; text-align: center; padding: 10px; }
 </style>
 </head>
 <body>
@@ -92,6 +110,27 @@
   <button id="refreshBtn" class="refresh-btn" style="display:none" onclick="loadFixtures()">🔄 Rafraîchir</button>
   <div id="matchList"></div>
   <div id="footerNote"></div>
+</div>
+<button id="debugFab" class="debug-fab" onclick="toggleDebugPanel()">🐛 Debug <span class="debug-badge" id="debugBadge" style="display:none">0</span></button>
+<div id="debugPanel" class="debug-panel">
+  <div class="debug-panel-inner">
+    <div class="debug-panel-header">
+      <span>🐛 Journal technique</span>
+      <div class="debug-panel-actions">
+        <button class="debug-panel-btn copy" onclick="copyDebugLog()">Copier</button>
+        <button class="debug-panel-btn clear" onclick="clearDebugLog()">Vider</button>
+        <button class="debug-panel-btn close" onclick="toggleDebugPanel()">Fermer</button>
+      </div>
+    </div>
+    <div class="debug-section">
+      <div class="debug-section-title">💰 Rentabilité des value bets <button class="debug-panel-btn" onclick="refreshVBTrackerPanel()">Vérifier les résultats</button></div>
+      <div id="vbTrackerPanel" class="debug-log"></div>
+    </div>
+    <div class="debug-section">
+      <div class="debug-section-title">Journal (console)</div>
+      <div id="debugLogContent" class="debug-log"></div>
+    </div>
+  </div>
 </div>
 <script>
 const API_BASE = "https://Sadquiy35--2a7ef21a6f6f11f1a7161607ee4eb77e.web.val.run";
@@ -120,6 +159,196 @@ const COUNTRY_TO_ISO = {"morocco":"MA","world":"🌍","england":"GB","spain":"ES
 function isoToFlag(iso) { if(!iso||iso.length!==2) return "🏳️"; return String.fromCodePoint(...iso.toUpperCase().split("").map(c=>127397+c.charCodeAt(0))); }
 function countryFlag(c) { const k=(c||"").toLowerCase(); if(k==="world") return "🌍"; const iso=COUNTRY_TO_ISO[k]; return iso?isoToFlag(iso):"🏳️"; }
 function formatLeagueName(league,country) { const c=(country||"").trim(),l=(league||"").trim(); if(!c||c.toLowerCase()==="world") return l; if(l.toLowerCase().startsWith(c.toLowerCase())) return l; return `${c}. ${l}`; }
+
+// --- Journal technique (panneau 🐛 Debug) : capture les console.warn/error pour pouvoir les
+// consulter directement dans l'app sur mobile, sans outils développeur.
+let debugLog=[], debugUnread=0;
+const _origWarn=console.warn, _origError=console.error;
+function pushDebugLog(level, args) {
+  const msg=args.map(a=>typeof a==='object'?JSON.stringify(a):String(a)).join(' ');
+  debugLog.push({level, msg, time:new Date().toLocaleTimeString('fr-FR')});
+  if(debugLog.length>300) debugLog.shift();
+  debugUnread++;
+  updateDebugBadge();
+  const panel=document.getElementById('debugPanel');
+  if(panel && panel.classList.contains('open')) renderDebugLog();
+}
+console.warn=function(...args){ pushDebugLog('warn',args); _origWarn(...args); };
+console.error=function(...args){ pushDebugLog('error',args); _origError(...args); };
+function updateDebugBadge(){
+  const b=document.getElementById('debugBadge');
+  if(!b) return;
+  b.style.display=debugUnread>0?'inline-block':'none';
+  b.textContent=debugUnread>99?'99+':debugUnread;
+}
+function renderDebugLog(){
+  const el=document.getElementById('debugLogContent');
+  if(!el) return;
+  if(debugLog.length===0){ el.innerHTML='<div class="debug-empty">Aucun message pour l\'instant.</div>'; return; }
+  el.innerHTML=debugLog.slice().reverse().map(e=>`<div class="debug-log-entry${e.level==='error'?' err':''}">[${e.time}] ${e.level.toUpperCase()}: ${e.msg}</div>`).join('');
+}
+function toggleDebugPanel(){
+  const panel=document.getElementById('debugPanel'); if(!panel) return;
+  const open=panel.classList.toggle('open');
+  if(open){ renderDebugLog(); debugUnread=0; updateDebugBadge(); renderVBTrackerPanel(); }
+}
+function clearDebugLog(){ debugLog=[]; renderDebugLog(); }
+async function copyDebugLog(){
+  try{ await navigator.clipboard.writeText(debugLog.map(e=>`[${e.time}] ${e.level.toUpperCase()}: ${e.msg}`).join('\n')); alert('Journal copié.'); }
+  catch(e){ alert('Copie impossible : '+e.message); }
+}
+
+// --- Tracker ROI des value bets : enregistre chaque value bet détecté en avant-match, puis permet
+// de vérifier après coup (bouton "Vérifier les résultats") si le pari aurait été gagné ou perdu, pour
+// mesurer la rentabilité réelle du modèle plutôt que de se fier uniquement à l'edge affiché.
+const VB_TRACKER_KEY='pronosValueBetTracker_v1';
+// Identifiant de la méthode de calibration en vigueur. À incrémenter à chaque changement de
+// calibration qui modifie les probabilités du modèle, pour pouvoir comparer le ROI par version dans
+// le tracker sans que les anciens paris (autre méthode) diluent silencieusement le résultat.
+const CALIBRATION_VERSION='v2_joint_ou';
+function loadVBTracker(){ try{ return JSON.parse(localStorage.getItem(VB_TRACKER_KEY)||'[]'); }catch(e){ return []; } }
+function saveVBTracker(arr){ try{ localStorage.setItem(VB_TRACKER_KEY, JSON.stringify(arr)); }catch(e){ console.warn('[pronos] Sauvegarde du suivi value bets impossible:', e.message); } }
+function getCalibVersion(rec){ return rec.calibVersion || 'v1_1x2_only'; }
+function recordValueBet(fixture, vb){
+  const tracker=loadVBTracker();
+  const key=`${fixture.fixture.id}|${vb.market}|${vb.pick}`;
+  if(tracker.find(t=>t.key===key)) return;
+  tracker.push({
+    key, fixtureId:fixture.fixture.id,
+    homeName:fixture.teams.home.name, awayName:fixture.teams.away.name,
+    kickoff:fixture.fixture.date,
+    market:vb.market, pick:vb.pick, odd:vb.odd, edge:vb.edge,
+    calibVersion:CALIBRATION_VERSION,
+    resolved:false, won:null
+  });
+  if(tracker.length>800) tracker.splice(0, tracker.length-800);
+  saveVBTracker(tracker);
+}
+
+// Détermine si un pari est gagné à partir du score final. Couvre les marchés que findValueBets sait
+// détecter. Retourne null si le marché n'est pas reconnu (le pari est alors ignoré du calcul de ROI,
+// pas compté comme perdu).
+function resolveBetOutcome(market, pick, hG, aG, homeName, awayName){
+  const total=hG+aG;
+  if(market==='Résultat (1X2)'){
+    if(pick===`Victoire ${homeName}`) return hG>aG;
+    if(pick===`Victoire ${awayName}`) return aG>hG;
+    if(pick==='Match nul') return hG===aG;
+  }
+  if(market==='Double Chance'){
+    if(pick===`${homeName} ou Nul`) return hG>=aG;
+    if(pick===`${homeName} ou ${awayName}`) return hG!==aG;
+    if(pick===`Nul ou ${awayName}`) return aG>=hG;
+  }
+  if(market==='Total buts'){
+    const m=pick.match(/^(Over|Under) (\d+\.\d+)$/);
+    if(m){ const line=parseFloat(m[2]); return m[1]==='Over' ? total>line : total<line; }
+  }
+  if(market==='Les deux équipes marquent'){
+    const btts=hG>0&&aG>0;
+    return pick==='Oui' ? btts : !btts;
+  }
+  if(market===`${homeName} gagne sans encaisser`) return pick==='Oui' ? (hG>aG&&aG===0) : null;
+  if(market===`${awayName} gagne sans encaisser`) return pick==='Oui' ? (aG>hG&&hG===0) : null;
+  if(market==='Match nul avec buts') return pick==='Oui' ? (hG===aG&&hG>0) : null;
+  if(market==='0-0') return pick==='Oui' ? (hG===0&&aG===0) : null;
+  return null; // marché non couvert (HT-FT, mi-temps, etc.) : on ne sait pas vérifier automatiquement ici
+}
+
+// Vérifie tous les paris en attente dont le coup d'envoi remonte à plus de 2h30 (le match est presque
+// certainement terminé à ce stade), en récupérant le score final via l'API.
+async function evaluateVBTracker(){
+  const tracker=loadVBTracker();
+  const now=Date.now();
+  const pending=tracker.filter(t=>!t.resolved && (now-new Date(t.kickoff).getTime())>2.5*60*60*1000);
+  const fixtureIds=[...new Set(pending.map(t=>t.fixtureId))];
+  for(const fid of fixtureIds){
+    try{
+      const data=await apiGet(`/fixtures?id=${fid}`);
+      const fx=data && data[0];
+      if(!fx || !DONE_STATUSES.includes(fx.fixture.status.short) || fx.goals.home===null) continue;
+      tracker.filter(t=>t.fixtureId===fid && !t.resolved).forEach(t=>{
+        const outcome=resolveBetOutcome(t.market,t.pick,fx.goals.home,fx.goals.away,t.homeName,t.awayName);
+        if(outcome===null){ t.resolved=true; t.skipped=true; }
+        else { t.resolved=true; t.won=outcome; }
+      });
+    }catch(e){ console.warn(`[pronos] Vérification résultat fixture ${fid} échouée :`, e.message); }
+  }
+  saveVBTracker(tracker);
+}
+
+function computeROI(tracker){
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
+  let staked=0, profit=0, wins=0;
+  evaluated.forEach(rec=>{
+    staked+=1;
+    profit += rec.won ? (rec.odd-1) : -1;
+    if(rec.won) wins++;
+  });
+  return {n:evaluated.length, staked, profit, roi:staked>0?profit/staked*100:null, winRate:evaluated.length>0?wins/evaluated.length*100:null};
+}
+function computeROIByVersion(tracker){
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
+  const byVersion={};
+  evaluated.forEach(r=>{
+    const v=getCalibVersion(r);
+    if(!byVersion[v]) byVersion[v]={n:0, profit:0};
+    byVersion[v].n++;
+    byVersion[v].profit += r.won ? (r.odd-1) : -1;
+  });
+  return Object.entries(byVersion).map(([version,d])=>({version, n:d.n, roi:d.n>0?d.profit/d.n*100:null}));
+}
+function computeROIByEdgeTier(tracker){
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped);
+  const tiers=[{label:'🔥 +10%',min:10,max:Infinity},{label:'⚡ +6-10%',min:6,max:10},{label:'+3-6%',min:3,max:6}];
+  return tiers.map(t=>{
+    const inTier=evaluated.filter(r=>r.edge>=t.min && r.edge<t.max);
+    const profit=inTier.reduce((s,r)=>s+(r.won?(r.odd-1):-1),0);
+    return {label:t.label, n:inTier.length, roi:inTier.length>0?profit/inTier.length*100:null};
+  });
+}
+function computeROIByMarket(tracker, edgeFilter){
+  const evaluated=tracker.filter(t=>t.resolved && !t.skipped && (!edgeFilter || edgeFilter(t.edge)));
+  const byMarket={};
+  evaluated.forEach(r=>{
+    if(!byMarket[r.market]) byMarket[r.market]={n:0, profit:0};
+    byMarket[r.market].n++;
+    byMarket[r.market].profit += r.won ? (r.odd-1) : -1;
+  });
+  return Object.entries(byMarket).map(([market,d])=>({market, n:d.n, roi:d.n>0?d.profit/d.n*100:null})).sort((a,b)=>b.n-a.n);
+}
+function renderVBTrackerPanel(){
+  const el=document.getElementById('vbTrackerPanel');
+  if(!el) return;
+  const tracker=loadVBTracker();
+  const skippedCount=tracker.filter(t=>t.skipped).length;
+  const skippedNote=skippedCount>0?`<div class="debug-log-entry" style="color:#b08900;">⚠️ ${skippedCount} paris enregistrés sur un marché qu'on ne sait pas vérifier automatiquement (HT-FT, mi-temps...) — exclus du calcul ci-dessous.</div>`:'';
+  const global=computeROI(tracker);
+  if(global.n===0){ el.innerHTML=skippedNote+'<div class="debug-empty">Aucun pari évalué pour l\'instant. Attends qu\'un match analysé se termine (+2h30), puis clique "Vérifier les résultats".</div>'; return; }
+  const byVersion=computeROIByVersion(tracker);
+  const currentTracker=tracker.filter(t=>getCalibVersion(t)===CALIBRATION_VERSION);
+  const versionNote = byVersion.length>1
+    ? `<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:6px 0 4px;">Par version de calibration</div>`+
+      byVersion.map(v=>`<div class="debug-log-entry${v.roi<0?' err':' best'}">${v.version}${v.version===CALIBRATION_VERSION?' (actuelle)':''} → ROI ${v.roi>=0?'+':''}${v.roi.toFixed(1)}% (n=${v.n})</div>`).join('')
+    : '';
+  const currentEvaluated=currentTracker.filter(t=>t.resolved&&!t.skipped).length;
+  el.innerHTML=skippedNote+
+    `<div style="font-size:11px;color:#8a9ab8;margin-bottom:8px;">${global.n} pari${global.n>1?'s':''} évalué${global.n>1?'s':''} · taux de réussite ${global.winRate.toFixed(0)}%</div>`+
+    `<div class="debug-log-entry${global.roi>0?' best':' err'}">ROI global (toutes versions) : ${global.roi>=0?'+':''}${global.roi.toFixed(1)}% (n=${global.n})</div>`+
+    versionNote+
+    (currentEvaluated<10
+      ? `<div class="debug-empty" style="margin-top:8px;">Détail par tranche/marché (calibration actuelle) : encore trop peu de paris évalués (${currentEvaluated}).</div>`
+      : `<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Détail — calibration actuelle uniquement</div>`+
+        computeROIByEdgeTier(currentTracker).map(t=>`<div class="debug-log-entry">${t.label} → ROI ${t.roi!==null?(t.roi>=0?'+':'')+t.roi.toFixed(1)+'%':'—'} (n=${t.n})</div>`).join('')+
+        `<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Par marché (tous edges)</div>`+
+        computeROIByMarket(currentTracker).map(m=>`<div class="debug-log-entry${m.roi<0?' err':' best'}">${m.market} → ROI ${m.roi>=0?'+':''}${m.roi.toFixed(1)}% (n=${m.n})</div>`).join(''));
+}
+async function refreshVBTrackerPanel(){
+  const el=document.getElementById('vbTrackerPanel');
+  if(el) el.innerHTML='<div class="debug-empty">Vérification des résultats en cours...</div>';
+  await evaluateVBTracker();
+  renderVBTrackerPanel();
+}
 
 function oddsToProb(odds) { return odds > 1 ? 1/odds : 0; }
 function normalizeProbabilities(probs) { const t=probs.reduce((s,p)=>s+p,0); return t===0?probs:probs.map(p=>p/t); }
@@ -337,6 +566,7 @@ async function showPredictions(fixture,container,btn) {
           modelProbs=withJointOUProbs(modelProbs,ouLh,ouLa);
         }
         const valueBets=findValueBets(modelProbs,parsed,home.name,away.name);
+        valueBets.forEach(vb=>recordValueBet(fixture,vb));
         if(valueBets.length===0){
           html+=`<div class="no-odds">✅ Aucun value bet détecté.<br>Les cotes semblent correctement évaluées.</div>`;
         } else {
