@@ -20,6 +20,8 @@
   .status { text-align: center; margin-top: 60px; color: #8a8478; font-size: 14px; }
   .error-box { background: #fdf0ef; border: 1px solid #f3c9c5; border-radius: 10px; padding: 12px; margin-bottom: 16px; font-size: 13px; color: #9b2c2c; }
   .refresh-btn { display: flex; align-items: center; gap: 6px; margin-bottom: 12px; background: none; border: none; color: #8a8478; font-size: 12px; cursor: pointer; padding: 0; }
+  .match-search { width: 100%; box-sizing: border-box; padding: 10px 14px; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; }
+  .load-more-btn { display: block; width: 100%; padding: 12px; margin: 8px 0 16px; background: #eef2f9; border: none; border-radius: 10px; color: #1a3a6b; font-weight: 700; font-size: 13px; }
   .league-group { margin-bottom: 8px; border-radius: 10px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
   .league-header { display: flex; align-items: center; gap: 10px; background: #fff; padding: 11px 14px; cursor: pointer; border-bottom: 1px solid #eee; }
   .league-header.live-header { background: #fff8f8; }
@@ -118,6 +120,7 @@
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
   <button id="refreshBtn" class="refresh-btn" style="display:none" onclick="loadFixtures()">🔄 Rafraîchir</button>
+  <input id="matchSearch" class="match-search" type="text" placeholder="🔍 Filtrer par équipe ou ligue..." oninput="applySearchFilter()">
   <div id="matchList"></div>
   <div id="footerNote"></div>
 </div>
@@ -154,6 +157,13 @@
 const API_BASE = "https://Sadquiy35--2a7ef21a6f6f11f1a7161607ee4eb77e.web.val.run";
 const BOOKMAKER_1XBET = 8;
 let allFixtures = [], currentTab = "upcoming";
+// currentTabFixtures : la liste déjà filtrée par onglet (Avant-match / En direct / Terminés), AVANT
+// application de la recherche texte. leagueRenderLimit : nombre de groupes de ligues affichés d'un
+// coup — on n'affiche pas les ~200-400 matchs remontés par l'API en une seule fois (ça alourdit le
+// DOM et ralentit le défilement sur mobile), on charge par lots via le bouton "Charger plus".
+let currentTabFixtures = [];
+const LEAGUE_RENDER_BATCH = 15;
+let leagueRenderLimit = LEAGUE_RENDER_BATCH;
 const fixtureOddsCache = {}; // fixture.id -> {lh, la, parsed, source} | null (null = no odds found, cached to avoid refetch)
 const matchUIState = {};     // fixture.id -> {expanded, html, btnLabel, btnClass}
 const leagueOpenState = {};  // league.id -> true/false
@@ -266,6 +276,15 @@ const LIVE_STATUSES = ["1H","HT","2H","ET","BT","P","SUSP","INT","LIVE"];
 const DONE_STATUSES = ["FT","AET","PEN","AWD","WO"];
 function isLive(f) { return LIVE_STATUSES.includes(f.fixture.status.short); }
 function isFinished(f) { return DONE_STATUSES.includes(f.fixture.status.short); }
+// Un match "à venir" dont le coup d'envoi est passé depuis longtemps (>70 min) mais dont l'API n'a
+// jamais mis à jour le statut (fréquent sur des amicaux peu suivis, sans flux live fiable) : il est
+// quasi certainement déjà terminé, donc on le traite comme tel plutôt que de le laisser coincé dans
+// Avant-match indéfiniment (avant, on se contentait d'un badge ⚠️ sans le déplacer).
+function isStaleUpcoming(f) {
+  if (isLive(f) || isFinished(f)) return false;
+  const minutesSinceKickoff = (Date.now()-new Date(f.fixture.date).getTime())/60000;
+  return minutesSinceKickoff > 70;
+}
 // Un match "en direct" dont le statut n'a manifestement pas bougé depuis très longtemps (l'API n'a
 // jamais mis à jour la minute ou le statut final) : on le traite comme terminé dans l'app, plutôt
 // que de le laisser bloqué indéfiniment dans l'onglet EN DIRECT.
@@ -276,7 +295,7 @@ function isStaleLive(f) {
   const elapsed = f.fixture.status.elapsed || 0;
   return (minutesSinceKickoff - elapsed) > 60;
 }
-function isUpcoming(f) { return !isLive(f) && !isFinished(f); }
+function isUpcoming(f) { return !isLive(f) && !isFinished(f) && !isStaleUpcoming(f); }
 const LEAGUE_PRIORITY = ["world cup","fifa world cup","champions league","premier league","la liga","serie a","bundesliga","ligue 1","europa league","conference league","eredivisie","primeira liga","super lig","botola","nations league","afcon","copa america"];
 function leaguePriority(n) { const name=(n||"").toLowerCase(); for(let i=0;i<LEAGUE_PRIORITY.length;i++) if(name.includes(LEAGUE_PRIORITY[i])) return i; return LEAGUE_PRIORITY.length; }
 const COUNTRY_TO_ISO = {"morocco":"MA","world":"🌍","england":"GB","spain":"ES","italy":"IT","germany":"DE","france":"FR","portugal":"PT","netherlands":"NL","belgium":"BE","turkey":"TR","greece":"GR","switzerland":"CH","austria":"AT","denmark":"DK","sweden":"SE","norway":"NO","croatia":"HR","serbia":"RS","brazil":"BR","argentina":"AR","usa":"US","mexico":"MX","egypt":"EG","algeria":"DZ","tunisia":"TN","saudi-arabia":"SA","qatar":"QA","nigeria":"NG","senegal":"SN","cameroon":"CM","ghana":"GH","ivory coast":"CI","scotland":"GB","poland":"PL","czech-republic":"CZ"};
@@ -974,7 +993,7 @@ async function runHistoricalBackfill(daysBack=7, maxFixtures=40){
         const cal=await getCalibratedModel(fixture); // enregistre aussi la prédiction Brier au passage si cotes+forme dispo
         resolvePredictionNow(fixture);
         if(!cal || !cal.parsed) continue; // pas de cotes 1xBet : rien à évaluer pour le ROI ici
-        const modelProbs=computeModelProbabilities(cal.lh,cal.la);
+        const modelProbs=withJointOUProbs(computeModelProbabilities(cal.lh,cal.la), cal);
         const valueBets=findValueBets(modelProbs,cal.parsed,fixture.teams.home.name,fixture.teams.away.name,cal.lh,cal.la);
         valueBets.forEach(vb=>{ if(resolveValueBetNow(fixture,vb)) valueBetsFound++; });
       }
@@ -1017,15 +1036,23 @@ async function getCalibratedModel(fixture) {
     // encore totalement intégré (petite série, blessure...), sans pour autant s'en écarter trop.
     const rawH=oddsToProb(parsed.home1x2), rawD=oddsToProb(parsed.draw1x2||2), rawA=oddsToProb(parsed.away1x2);
     const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
-    // On calibre aussi sur les cotes Over/Under 1xBet quand elles existent, pas seulement sur le 1X2
-    // (cf. diagnostic ROI : sans ça, deux matchs avec le même 1X2 mais des dynamiques de buts très
-    // différentes retombaient sur les mêmes lambdas, et le "Total buts" affiché ne reflétait qu'une
-    // limite du modèle plutôt qu'un vrai edge).
+    // IMPORTANT : un seul (lh,la) alimente TOUTE la matrice de scores (1X2, BTTS, Score exact, HT-FT,
+    // etc.), donc on calcule DEUX calibrations séparées plutôt qu'une seule :
+    // - oddsLh/oddsLa : fit PUR sur le 1X2 uniquement (comme avant le fix Total buts). Utilisé pour
+    //   tout le reste du modèle (1X2, Double Chance, BTTS, Score exact, Handicap, HT-FT, le tracker
+    //   Brier "Fiabilité cotes vs forme"...), pour ne pas dégrader ces marchés-là.
+    // - ouLh/ouLa : fit JOINT 1X2 + Over/Under 1xBet (0.5/1.5/2.5/3.5 quand dispo). Utilisé UNIQUEMENT
+    //   pour dériver les probabilités de "Total buts", là où le fit pur 1X2 produisait les faux edges
+    //   diagnostiqués dans le tracker ROI (cf. panneau Debug).
+    // Sans cette séparation, le fit joint distord aussi le 1X2 lui-même — régression repérée sur le
+    // tracker Brier début juillet 2026 (Cotes 100% redevenu pire que Forme 100%, alors que ce suivi
+    // montrait l'inverse depuis 129+ matchs).
+    const {lh:oddsLh,la:oddsLa}=estimateLambdas(nH,nD,nA);
     const overTargets=[];
     [[0.5,'over05','under05'],[1.5,'over15','under15'],[2.5,'over25','under25'],[3.5,'over35','under35']].forEach(([line,ok,uk])=>{
       if(parsed[ok]) overTargets.push({line, p: pairImpliedProb(parsed[ok], parsed[uk])});
     });
-    const {lh:oddsLh,la:oddsLa}=estimateLambdas(nH,nD,nA,overTargets.length?overTargets:null);
+    const {lh:ouLh,la:ouLa}=overTargets.length ? estimateLambdas(nH,nD,nA,overTargets) : {lh:oddsLh,la:oddsLa};
     let lh=oddsLh, la=oddsLa, source='odds';
     if (hasForm) {
       const formLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
@@ -1037,7 +1064,7 @@ async function getCalibratedModel(fixture) {
       // ce mélange aux probabilités affichées, tout en continuant d'enregistrer les prédictions pour
       // vérifier que ça reste vrai sur un échantillon encore plus grand.
     }
-    const result={lh,la,parsed,source};
+    const result={lh,la,ouLh,ouLa,parsed,source};
     fixtureOddsCache[fid]=result;
     return result;
   }
@@ -1059,7 +1086,17 @@ async function getCalibratedModel(fixture) {
   return null;
 }
 
+// Remplace uniquement les probabilités de "Total buts" (Over/Under) par celles issues du fit JOINT
+// 1X2+O/U (cal.ouLh/ouLa), en gardant tout le reste de modelProbs (1X2, BTTS, Score exact, etc.) tel
+// que calculé avec le fit 1X2 pur. Voir le commentaire dans getCalibratedModel pour le pourquoi.
+function withJointOUProbs(modelProbs, cal){
+  if(!cal || cal.ouLh===undefined || (cal.ouLh===cal.lh && cal.ouLa===cal.la)) return modelProbs;
+  const ouProbs=computeModelProbabilities(cal.ouLh, cal.ouLa);
+  return {...modelProbs, pO05:ouProbs.pO05, pO15:ouProbs.pO15, pO25:ouProbs.pO25, pO35:ouProbs.pO35};
+}
+
 function computeRemainingMarketProbs(hG, aG, lhRem, laRem) {
+
   const M = buildScoreMatrix(lhRem, laRem, 8);
   let pH=0,pD=0,pA=0,pO05=0,pO15=0,pO25=0,pO35=0,pO45=0,pO55=0,pBTTS=0,pWTNH=0,pWTNA=0,pHomeScores=0,pAwayScores=0;
   for(let i=0;i<=8;i++) for(let j=0;j<=8;j++){
@@ -1274,7 +1311,7 @@ async function showPredictions(fixture,container,btn) {
       } else {
         html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
         const {lh,la,parsed}=cal;
-        const modelProbs=computeModelProbabilities(lh,la);
+        const modelProbs=withJointOUProbs(computeModelProbabilities(lh,la), cal);
         const valueBets=findValueBets(modelProbs,parsed,home.name,away.name,lh,la);
         if(valueBets.length===0){
           html+=`<div class="no-odds">✅ Aucun value bet détecté.<br>Les cotes semblent correctement évaluées.</div>`;
@@ -1326,10 +1363,10 @@ function renderMatch(fixture) {
     tb=`<span class="badge-live">${elapsed?elapsed+"'":"Live"}</span>`;
   }
   else if(isFinished(fixture)){const sc=fixture.goals.home!==null?`${fixture.goals.home}-${fixture.goals.away}`:"FT";tb=`<span class="badge-done">✅ ${sc}</span>`;}
-  else if(isUpcoming(fixture) && minutesSinceKickoff>70){
+  else if(isStaleUpcoming(fixture)){
     // Le coup d'envoi est passé depuis longtemps mais l'API n'a jamais mis à jour le statut du match
-    // (fréquent sur des amicaux peu suivis, sans flux live fiable) : on le signale au lieu de faire
-    // comme si le match n'avait pas encore commencé.
+    // (fréquent sur des amicaux peu suivis, sans flux live fiable) : on le signale, ET on l'affiche
+    // maintenant dans Terminés au lieu de le laisser coincé dans Avant-match indéfiniment.
     tb=`<span class="time-badge" style="color:#b08900;" title="Statut non mis à jour par l'API">⚠️ ${timeStr}</span>`;
   }
   else tb=`<span class="time-badge">${timeStr}</span>`;
@@ -1378,15 +1415,44 @@ function renderTab(fixtures) {
   });
   // Les groupes avec un match en direct remontent en premier ; sinon, les matchs les plus proches
   // dans le temps (coup d'envoi le plus proche) apparaissent en haut.
-  Object.values(bl).sort((a,b)=>{
+  const sortedGroups=Object.values(bl).sort((a,b)=>{
     if(a.hasLive!==b.hasLive) return a.hasLive?-1:1;
     return a.earliest-b.earliest;
-  }).forEach(g=>{
+  });
+  // Rendu progressif : sur un onglet avec des centaines de matchs (ex: Terminés en fin de journée),
+  // on n'injecte dans le DOM que les `leagueRenderLimit` premiers groupes de ligues, pour éviter de
+  // ralentir le défilement sur mobile. Le bouton "Charger plus" révèle le reste par lots.
+  const visibleGroups=sortedGroups.slice(0,leagueRenderLimit);
+  visibleGroups.forEach(g=>{
     g.fixtures.sort((a,b)=>{const pa=isLive(a)?0:isUpcoming(a)?1:2,pb=isLive(b)?0:isUpcoming(b)?1:2;if(pa!==pb)return pa-pb;return new Date(a.fixture.date)-new Date(b.fixture.date);});
     ml.appendChild(renderLeagueGroup(g.id,g.name,g.country,g.fixtures,g.hasLive));
   });
+  if(sortedGroups.length>visibleGroups.length){
+    const remaining=sortedGroups.length-visibleGroups.length;
+    const btn=document.createElement("button");
+    btn.className="load-more-btn";
+    btn.textContent=`Charger plus de ligues (${remaining} restantes)`;
+    btn.onclick=()=>{ leagueRenderLimit+=LEAGUE_RENDER_BATCH; renderTab(fixtures); };
+    ml.appendChild(btn);
+  }
   fn.innerHTML="🔥 +10% edge fort · ⚡ +6% solide · +3% léger. Joue avec prudence.";
   fn.className="footer-note";
+}
+
+// Filtre côté client (aucun appel réseau) sur le nom d'équipe ou de ligue, appliqué à la liste déjà
+// filtrée par onglet. Ça remplace le défilement dans des centaines de matchs par une recherche
+// directe quand on cherche une équipe précise.
+function applySearchFilter(){
+  const term=document.getElementById("matchSearch").value.trim().toLowerCase();
+  leagueRenderLimit=LEAGUE_RENDER_BATCH;
+  if(!term){ renderTab(currentTabFixtures); return; }
+  const filtered=currentTabFixtures.filter(f=>
+    f.teams.home.name.toLowerCase().includes(term) ||
+    f.teams.away.name.toLowerCase().includes(term) ||
+    f.league.name.toLowerCase().includes(term) ||
+    (f.league.country||"").toLowerCase().includes(term)
+  );
+  renderTab(filtered);
 }
 
 function switchTab(tab) {
@@ -1395,12 +1461,16 @@ function switchTab(tab) {
   let fx;
   if(tab==="live")fx=allFixtures.filter(f=>isLive(f)&&!isStaleLive(f));
   else if(tab==="upcoming")fx=allFixtures.filter(f=>isUpcoming(f));
-  else fx=allFixtures.filter(f=>isFinished(f)||isStaleLive(f));
+  else fx=allFixtures.filter(f=>isFinished(f)||isStaleLive(f)||isStaleUpcoming(f));
+  currentTabFixtures=fx;
+  leagueRenderLimit=LEAGUE_RENDER_BATCH;
+  const searchEl=document.getElementById("matchSearch");
+  if(searchEl) searchEl.value="";
   renderTab(fx);
   const lc=allFixtures.filter(f=>isLive(f)&&!isStaleLive(f)).length;
   document.getElementById("tabLive").innerHTML=`<span class="live-dot"></span>EN DIRECT${lc>0?` (${lc})`:""}`;
   document.getElementById("tabUpcoming").textContent=`AVANT-MATCH (${allFixtures.filter(f=>isUpcoming(f)).length})`;
-  document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)||isStaleLive(f)).length})`;
+  document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)||isStaleLive(f)||isStaleUpcoming(f)).length})`;
 }
 
 async function loadFixtures(silent=false) {
@@ -1419,18 +1489,4 @@ async function loadFixtures(silent=false) {
       }
     });
     const merged=(dateData||[]).map(f=>lm[f.fixture.id]||f);
-    (liveData||[]).forEach(f=>{if(!merged.find(m=>m.fixture.id===f.fixture.id))merged.push(f);});
-    allFixtures=merged.sort((a,b)=>new Date(a.fixture.date)-new Date(b.fixture.date));
-    se.style.display="none";rb.style.display="flex";
-    switchTab(currentTab);
-  } catch(e) {
-    if(!silent){se.style.display="none";eb.innerHTML=`<div class="error-box">⚠️ Impossible de récupérer les matchs.</div>`;rb.style.display="flex";}
-  }
-}
-
-document.getElementById("dateLabel").textContent=new Date().toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"});
-loadFixtures();
-setInterval(()=>loadFixtures(true),2*60*1000);
-</script>
-</body>
-</html>
+  
