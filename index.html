@@ -116,13 +116,12 @@
     <button class="tab-btn" id="tabDone" onclick="switchTab('done')">TERMINÉS</button>
   </div>
 </div>
-<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-11-4</div>
+<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-11-5-simplifie</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
   <div id="globalErrorBanner" style="display:none;background:#fdf0ef;border:2px solid #e63946;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#9b2c2c;font-family:monospace;white-space:pre-wrap;word-break:break-word;"></div>
   <button id="refreshBtn" class="refresh-btn" style="display:none" onclick="loadFixtures()">🔄 Rafraîchir</button>
-  <input id="matchSearch" class="match-search" type="text" placeholder="🔍 Filtrer par équipe ou ligue..." oninput="applySearchFilter()">
   <div id="matchList"></div>
   <div id="footerNote"></div>
 </div>
@@ -176,13 +175,6 @@ window.addEventListener('unhandledrejection', (e)=>{
 const API_BASE = "https://Sadquiy35--2a7ef21a6f6f11f1a7161607ee4eb77e.web.val.run";
 const BOOKMAKER_1XBET = 8;
 let allFixtures = [], currentTab = "upcoming";
-// currentTabFixtures : la liste déjà filtrée par onglet (Avant-match / En direct / Terminés), AVANT
-// application de la recherche texte. leagueRenderLimit : nombre de groupes de ligues affichés d'un
-// coup — on n'affiche pas les ~200-400 matchs remontés par l'API en une seule fois (ça alourdit le
-// DOM et ralentit le défilement sur mobile), on charge par lots via le bouton "Charger plus".
-let currentTabFixtures = [];
-const LEAGUE_RENDER_BATCH = 15;
-let leagueRenderLimit = LEAGUE_RENDER_BATCH;
 const fixtureOddsCache = {}; // fixture.id -> {lh, la, parsed, source} | null (null = no odds found, cached to avoid refetch)
 const matchUIState = {};     // fixture.id -> {expanded, html, btnLabel, btnClass}
 const leagueOpenState = {};  // league.id -> true/false
@@ -306,15 +298,6 @@ const LIVE_STATUSES = ["1H","HT","2H","ET","BT","P","SUSP","INT","LIVE"];
 const DONE_STATUSES = ["FT","AET","PEN","AWD","WO"];
 function isLive(f) { return LIVE_STATUSES.includes(f.fixture.status.short); }
 function isFinished(f) { return DONE_STATUSES.includes(f.fixture.status.short); }
-// Un match "à venir" dont le coup d'envoi est passé depuis longtemps (>70 min) mais dont l'API n'a
-// jamais mis à jour le statut (fréquent sur des amicaux peu suivis, sans flux live fiable) : il est
-// quasi certainement déjà terminé, donc on le traite comme tel plutôt que de le laisser coincé dans
-// Avant-match indéfiniment (avant, on se contentait d'un badge ⚠️ sans le déplacer).
-function isStaleUpcoming(f) {
-  if (isLive(f) || isFinished(f)) return false;
-  const minutesSinceKickoff = (Date.now()-new Date(f.fixture.date).getTime())/60000;
-  return minutesSinceKickoff > 70;
-}
 // Un match "en direct" dont le statut n'a manifestement pas bougé depuis très longtemps (l'API n'a
 // jamais mis à jour la minute ou le statut final) : on le traite comme terminé dans l'app, plutôt
 // que de le laisser bloqué indéfiniment dans l'onglet EN DIRECT.
@@ -325,7 +308,7 @@ function isStaleLive(f) {
   const elapsed = f.fixture.status.elapsed || 0;
   return (minutesSinceKickoff - elapsed) > 60;
 }
-function isUpcoming(f) { return !isLive(f) && !isFinished(f) && !isStaleUpcoming(f); }
+function isUpcoming(f) { return !isLive(f) && !isFinished(f); }
 const LEAGUE_PRIORITY = ["world cup","fifa world cup","champions league","premier league","la liga","serie a","bundesliga","ligue 1","europa league","conference league","eredivisie","primeira liga","super lig","botola","nations league","afcon","copa america"];
 function leaguePriority(n) { const name=(n||"").toLowerCase(); for(let i=0;i<LEAGUE_PRIORITY.length;i++) if(name.includes(LEAGUE_PRIORITY[i])) return i; return LEAGUE_PRIORITY.length; }
 const COUNTRY_TO_ISO = {"morocco":"MA","world":"🌍","england":"GB","spain":"ES","italy":"IT","germany":"DE","france":"FR","portugal":"PT","netherlands":"NL","belgium":"BE","turkey":"TR","greece":"GR","switzerland":"CH","austria":"AT","denmark":"DK","sweden":"SE","norway":"NO","croatia":"HR","serbia":"RS","brazil":"BR","argentina":"AR","usa":"US","mexico":"MX","egypt":"EG","algeria":"DZ","tunisia":"TN","saudi-arabia":"SA","qatar":"QA","nigeria":"NG","senegal":"SN","cameroon":"CM","ghana":"GH","ivory coast":"CI","scotland":"GB","poland":"PL","czech-republic":"CZ"};
@@ -1393,10 +1376,10 @@ function renderMatch(fixture) {
     tb=`<span class="badge-live">${elapsed?elapsed+"'":"Live"}</span>`;
   }
   else if(isFinished(fixture)){const sc=fixture.goals.home!==null?`${fixture.goals.home}-${fixture.goals.away}`:"FT";tb=`<span class="badge-done">✅ ${sc}</span>`;}
-  else if(isStaleUpcoming(fixture)){
+  else if(isUpcoming(fixture) && minutesSinceKickoff>70){
     // Le coup d'envoi est passé depuis longtemps mais l'API n'a jamais mis à jour le statut du match
-    // (fréquent sur des amicaux peu suivis, sans flux live fiable) : on le signale, ET on l'affiche
-    // maintenant dans Terminés au lieu de le laisser coincé dans Avant-match indéfiniment.
+    // (fréquent sur des amicaux peu suivis, sans flux live fiable) : on le signale au lieu de faire
+    // comme si le match n'avait pas encore commencé.
     tb=`<span class="time-badge" style="color:#b08900;" title="Statut non mis à jour par l'API">⚠️ ${timeStr}</span>`;
   }
   else tb=`<span class="time-badge">${timeStr}</span>`;
@@ -1445,44 +1428,56 @@ function renderTab(fixtures) {
   });
   // Les groupes avec un match en direct remontent en premier ; sinon, les matchs les plus proches
   // dans le temps (coup d'envoi le plus proche) apparaissent en haut.
-  const sortedGroups=Object.values(bl).sort((a,b)=>{
+  Object.values(bl).sort((a,b)=>{
     if(a.hasLive!==b.hasLive) return a.hasLive?-1:1;
     return a.earliest-b.earliest;
-  });
-  // Rendu progressif : sur un onglet avec des centaines de matchs (ex: Terminés en fin de journée),
-  // on n'injecte dans le DOM que les `leagueRenderLimit` premiers groupes de ligues, pour éviter de
-  // ralentir le défilement sur mobile. Le bouton "Charger plus" révèle le reste par lots.
-  const visibleGroups=sortedGroups.slice(0,leagueRenderLimit);
-  visibleGroups.forEach(g=>{
+  }).forEach(g=>{
     g.fixtures.sort((a,b)=>{const pa=isLive(a)?0:isUpcoming(a)?1:2,pb=isLive(b)?0:isUpcoming(b)?1:2;if(pa!==pb)return pa-pb;return new Date(a.fixture.date)-new Date(b.fixture.date);});
     ml.appendChild(renderLeagueGroup(g.id,g.name,g.country,g.fixtures,g.hasLive));
   });
-  if(sortedGroups.length>visibleGroups.length){
-    const remaining=sortedGroups.length-visibleGroups.length;
-    const btn=document.createElement("button");
-    btn.className="load-more-btn";
-    btn.textContent=`Charger plus de ligues (${remaining} restantes)`;
-    btn.onclick=()=>{ leagueRenderLimit+=LEAGUE_RENDER_BATCH; renderTab(fixtures); };
-    ml.appendChild(btn);
-  }
   fn.innerHTML="🔥 +10% edge fort · ⚡ +6% solide · +3% léger. Joue avec prudence.";
   fn.className="footer-note";
 }
 
-// Filtre côté client (aucun appel réseau) sur le nom d'équipe ou de ligue, appliqué à la liste déjà
-// filtrée par onglet. Ça remplace le défilement dans des centaines de matchs par une recherche
-// directe quand on cherche une équipe précise.
-function applySearchFilter(){
-  const term=document.getElementById("matchSearch").value.trim().toLowerCase();
-  leagueRenderLimit=LEAGUE_RENDER_BATCH;
-  if(!term){ renderTab(currentTabFixtures); return; }
-  const filtered=currentTabFixtures.filter(f=>
-    f.teams.home.name.toLowerCase().includes(term) ||
-    f.teams.away.name.toLowerCase().includes(term) ||
-    f.league.name.toLowerCase().includes(term) ||
-    (f.league.country||"").toLowerCase().includes(term)
-  );
-  renderTab(filtered);
+function switchTab(tab) {
+  currentTab=tab;
+  ["upcoming","live","done"].forEach(t=>document.getElementById(`tab${t.charAt(0).toUpperCase()+t.slice(1)}`).classList.toggle("active",t===tab));
+  let fx;
+  if(tab==="live")fx=allFixtures.filter(f=>isLive(f)&&!isStaleLive(f));
+  else if(tab==="upcoming")fx=allFixtures.filter(f=>isUpcoming(f));
+  else fx=allFixtures.filter(f=>isFinished(f)||isStaleLive(f));
+  renderTab(fx);
+  const lc=allFixtures.filter(f=>isLive(f)&&!isStaleLive(f)).length;
+  document.getElementById("tabLive").innerHTML=`<span class="live-dot"></span>EN DIRECT${lc>0?` (${lc})`:""}`;
+  document.getElementById("tabUpcoming").textContent=`AVANT-MATCH (${allFixtures.filter(f=>isUpcoming(f)).length})`;
+  document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)||isStaleLive(f)).length})`;
 }
 
-function switchTab(tab) {
+async function loadFixtures(silent=false) {
+  const se=document.getElementById("status"),eb=document.getElementById("errorBox"),rb=document.getElementById("refreshBtn");
+  if(!silent){se.style.display="block";se.innerHTML='<span class="spin">🔄</span> Chargement...';eb.innerHTML="";document.getElementById("matchList").innerHTML="";}
+  try {
+    const [dateData,liveData]=await Promise.all([apiGet(`/fixtures?date=${todayISO()}`),apiGet(`/fixtures?live=all`).catch(()=>[])]);
+    const lm={};(liveData||[]).forEach(f=>{lm[f.fixture.id]=f;});
+    // Vérifie que les 2 appels API s'accordent sur les noms d'équipes pour un même ID de match :
+    // si ce n'est pas le cas, c'est une incohérence dans les données de l'API elle-même (pas dans
+    // notre logique de fusion), utile à savoir pour diagnostiquer un futur cas de nom d'équipe erroné.
+    (dateData||[]).forEach(f=>{
+      const live=lm[f.fixture.id];
+      if(live && (live.teams.away.name!==f.teams.away.name || live.teams.home.name!==f.teams.home.name)){
+        console.warn(`[pronos] Incohérence API pour fixture ${f.fixture.id} : /fixtures?date= dit "${f.teams.home.name} vs ${f.teams.away.name}", /fixtures?live=all dit "${live.teams.home.name} vs ${live.teams.away.name}"`);
+      }
+    });
+    const merged=(dateData||[]).map(f=>lm[f.fixture.id]||f);
+    (liveData||[]).forEach(f=>{if(!merged.find(m=>m.fixture.id===f.fixture.id))merged.push(f);});
+    allFixtures=merged.sort((a,b)=>new Date(a.fixture.date)-new Date(b.fixture.date));
+    se.style.display="none";rb.style.display="flex";
+    switchTab(currentTab);
+  } catch(e) {
+    if(!silent){se.style.display="none";eb.innerHTML=`<div class="error-box">⚠️ Impossible de récupérer les matchs. ${e.message||''}</div>`;rb.style.display="flex";}
+  }
+}
+
+document.getElementById("dateLabel").textContent=new Date().toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"});
+loadFixtures();
+setInterval(()=>loadFixtu
