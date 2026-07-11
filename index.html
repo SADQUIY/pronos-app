@@ -119,6 +119,7 @@
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
+  <div id="globalErrorBanner" style="display:none;background:#fdf0ef;border:2px solid #e63946;border-radius:10px;padding:12px;margin-bottom:12px;font-size:12px;color:#9b2c2c;font-family:monospace;white-space:pre-wrap;word-break:break-word;"></div>
   <button id="refreshBtn" class="refresh-btn" style="display:none" onclick="loadFixtures()">🔄 Rafraîchir</button>
   <input id="matchSearch" class="match-search" type="text" placeholder="🔍 Filtrer par équipe ou ligue..." oninput="applySearchFilter()">
   <div id="matchList"></div>
@@ -154,6 +155,23 @@
   </div>
 </div>
 <script>
+// Capture toute erreur JS non gérée (ou promesse rejetée non gérée) et l'affiche directement à
+// l'écran. Sans ça, sur mobile sans accès aux outils développeur, une erreur silencieuse laissait
+// l'app figée (ex: sur "Chargement...") sans aucun moyen de savoir pourquoi. Placé tout en haut du
+// script pour attraper aussi les erreurs qui surviendraient pendant l'initialisation elle-même.
+function showGlobalError(msg){
+  const b=document.getElementById('globalErrorBanner');
+  if(!b) return; // le DOM peut ne pas être prêt si l'erreur survient très tôt
+  const time=new Date().toLocaleTimeString('fr-FR');
+  b.style.display='block';
+  b.textContent = `[${time}] ${msg}` + (b.textContent ? '\n\n' + b.textContent : '');
+}
+window.addEventListener('error', (e)=>{
+  showGlobalError(`Erreur JS : ${e.message} (${e.filename?.split('/').pop()||''}:${e.lineno||'?'})`);
+});
+window.addEventListener('unhandledrejection', (e)=>{
+  showGlobalError(`Promesse rejetée non gérée : ${e.reason?.message||e.reason}`);
+});
 const API_BASE = "https://Sadquiy35--2a7ef21a6f6f11f1a7161607ee4eb77e.web.val.run";
 const BOOKMAKER_1XBET = 8;
 let allFixtures = [], currentTab = "upcoming";
@@ -265,8 +283,22 @@ function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
+// Délai d'expiration sur chaque appel API : sans ça, si le proxy CORS Val Town ou l'API-Football
+// reste bloqué sans jamais répondre (ni succès, ni erreur HTTP), l'app restait figée sur "Chargement..."
+// indéfiniment, sans aucun message pour comprendre pourquoi.
+const API_TIMEOUT_MS = 15000;
 async function apiGet(path) {
-  const res = await fetch(`${API_BASE}${path}`);
+  const controller = new AbortController();
+  const timer = setTimeout(()=>controller.abort(), API_TIMEOUT_MS);
+  let res;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {signal: controller.signal});
+  } catch(e) {
+    if (e.name === 'AbortError') throw new Error(`Le serveur (proxy Val Town / API-Football) n'a pas répondu en ${API_TIMEOUT_MS/1000}s. Réessaie dans un instant.`);
+    throw e;
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) throw new Error(`Erreur API (${res.status})`);
   const json = await res.json();
   if (json.errors && Object.keys(json.errors).length > 0) throw new Error(JSON.stringify(json.errors));
@@ -1461,32 +1493,4 @@ function switchTab(tab) {
   let fx;
   if(tab==="live")fx=allFixtures.filter(f=>isLive(f)&&!isStaleLive(f));
   else if(tab==="upcoming")fx=allFixtures.filter(f=>isUpcoming(f));
-  else fx=allFixtures.filter(f=>isFinished(f)||isStaleLive(f)||isStaleUpcoming(f));
-  currentTabFixtures=fx;
-  leagueRenderLimit=LEAGUE_RENDER_BATCH;
-  const searchEl=document.getElementById("matchSearch");
-  if(searchEl) searchEl.value="";
-  renderTab(fx);
-  const lc=allFixtures.filter(f=>isLive(f)&&!isStaleLive(f)).length;
-  document.getElementById("tabLive").innerHTML=`<span class="live-dot"></span>EN DIRECT${lc>0?` (${lc})`:""}`;
-  document.getElementById("tabUpcoming").textContent=`AVANT-MATCH (${allFixtures.filter(f=>isUpcoming(f)).length})`;
-  document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)||isStaleLive(f)||isStaleUpcoming(f)).length})`;
-}
-
-async function loadFixtures(silent=false) {
-  const se=document.getElementById("status"),eb=document.getElementById("errorBox"),rb=document.getElementById("refreshBtn");
-  if(!silent){se.style.display="block";se.innerHTML='<span class="spin">🔄</span> Chargement...';eb.innerHTML="";document.getElementById("matchList").innerHTML="";}
-  try {
-    const [dateData,liveData]=await Promise.all([apiGet(`/fixtures?date=${todayISO()}`),apiGet(`/fixtures?live=all`).catch(()=>[])]);
-    const lm={};(liveData||[]).forEach(f=>{lm[f.fixture.id]=f;});
-    // Vérifie que les 2 appels API s'accordent sur les noms d'équipes pour un même ID de match :
-    // si ce n'est pas le cas, c'est une incohérence dans les données de l'API elle-même (pas dans
-    // notre logique de fusion), utile à savoir pour diagnostiquer un futur cas de nom d'équipe erroné.
-    (dateData||[]).forEach(f=>{
-      const live=lm[f.fixture.id];
-      if(live && (live.teams.away.name!==f.teams.away.name || live.teams.home.name!==f.teams.home.name)){
-        console.warn(`[pronos] Incohérence API pour fixture ${f.fixture.id} : /fixtures?date= dit "${f.teams.home.name} vs ${f.teams.away.name}", /fixtures?live=all dit "${live.teams.home.name} vs ${live.teams.away.name}"`);
-      }
-    });
-    const merged=(dateData||[]).map(f=>lm[f.fixture.id]||f);
-  
+  else fx=allFixtures.filter(f=>isFinished(f)||isStaleLive(f)||isStaleUpcomin
