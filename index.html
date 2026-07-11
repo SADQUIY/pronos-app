@@ -116,7 +116,7 @@
     <button class="tab-btn" id="tabDone" onclick="switchTab('done')">TERMINÉS</button>
   </div>
 </div>
-<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-11-5-simplifie</div>
+<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-11-6-chrono</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
@@ -1455,7 +1455,15 @@ function switchTab(tab) {
 
 async function loadFixtures(silent=false) {
   const se=document.getElementById("status"),eb=document.getElementById("errorBox"),rb=document.getElementById("refreshBtn");
-  if(!silent){se.style.display="block";se.innerHTML='<span class="spin">🔄</span> Chargement...';eb.innerHTML="";document.getElementById("matchList").innerHTML="";}
+  let tickTimer=null;
+  if(!silent){
+    eb.innerHTML="";document.getElementById("matchList").innerHTML="";
+    se.style.display="block";
+    const startedAt=Date.now();
+    const updateTick=()=>{ se.innerHTML=`<span class="spin">🔄</span> Chargement... (${Math.floor((Date.now()-startedAt)/1000)}s)`; };
+    updateTick();
+    tickTimer=setInterval(updateTick,1000);
+  }
   try {
     const [dateData,liveData]=await Promise.all([apiGet(`/fixtures?date=${todayISO()}`),apiGet(`/fixtures?live=all`).catch(()=>[])]);
     const lm={};(liveData||[]).forEach(f=>{lm[f.fixture.id]=f;});
@@ -1471,13 +1479,9 @@ async function loadFixtures(silent=false) {
     const merged=(dateData||[]).map(f=>lm[f.fixture.id]||f);
     (liveData||[]).forEach(f=>{if(!merged.find(m=>m.fixture.id===f.fixture.id))merged.push(f);});
     allFixtures=merged.sort((a,b)=>new Date(a.fixture.date)-new Date(b.fixture.date));
+    if(tickTimer) clearInterval(tickTimer);
     se.style.display="none";rb.style.display="flex";
     switchTab(currentTab);
   } catch(e) {
-    if(!silent){se.style.display="none";eb.innerHTML=`<div class="error-box">⚠️ Impossible de récupérer les matchs. ${e.message||''}</div>`;rb.style.display="flex";}
-  }
-}
-
-document.getElementById("dateLabel").textContent=new Date().toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"});
-loadFixtures();
-setInterval(()=>loadFixtu
+    if(tickTimer) clearInterval(tickTimer);
+    if(!silent){se.style.display="none";eb.innerHTML=`<div
