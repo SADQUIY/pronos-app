@@ -413,10 +413,12 @@ async function runHistoricalBackfill(){
       if(parsed && parsed.home1x2){
         valueBets.forEach(vb=>{ if(resolveValueBetNow(fixture,vb)) valueBetsFound++; });
         try{
-          const [homeForm,awayForm]=await Promise.all([getTeamForm(fixture.teams.home.id),getTeamForm(fixture.teams.away.id)]);
+          const [homeForm,awayForm]=await Promise.all([getTeamForm(fixture.teams.home.id,fixture.fixture.date),getTeamForm(fixture.teams.away.id,fixture.fixture.date)]);
           const formLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
           const formLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
-          recordPredictionResolved(fixture, lh, la, formLh, formLa);
+          let h2h=null;
+          try{ h2h=await getH2HRecord(fixture.teams.home.id, fixture.teams.away.id); }catch(e){}
+          recordPredictionResolved(fixture, lh, la, formLh, formLa, h2h);
         }catch(e){ /* forme indisponible : on ignore silencieusement, ce n'est pas critique ici */ }
       }
     }catch(e){
@@ -642,7 +644,7 @@ function confidenceBarHTML(v) {
 // Calcule la forme récente d'une équipe (10 derniers matchs), séparée domicile/extérieur, avec un
 // lissage bayésien (mélange avec une moyenne a priori) pour éviter qu'un petit échantillon ne
 // produise des estimations extrêmes.
-async function getTeamForm(teamId) {
+async function getTeamForm(teamId, beforeDate) {
   const data=await apiGet(`/fixtures?team=${teamId}&last=10`);
   let homeScored=[],homeConceded=[],awayScored=[],awayConceded=[];
   (data||[]).forEach(f=>{
@@ -651,9 +653,21 @@ async function getTeamForm(teamId) {
     else if(f.teams.away.id===teamId){ awayScored.push(f.goals.away); awayConceded.push(f.goals.home); }
   });
   const avg=(arr,prior,priorWeight=3)=>(arr.reduce((s,v)=>s+v,0)+prior*priorWeight)/(arr.length+priorWeight);
+  // Jours de repos depuis le dernier match joué avant celui qu'on analyse — réutilise les mêmes
+  // données déjà récupérées, aucun appel réseau supplémentaire.
+  let restDays=null;
+  if(beforeDate){
+    const refTime=new Date(beforeDate).getTime();
+    const past=(data||[]).filter(f=>isFinished(f) && new Date(f.fixture.date).getTime()<refTime);
+    if(past.length){
+      const mostRecent=past.reduce((a,b)=>new Date(a.fixture.date)>new Date(b.fixture.date)?a:b);
+      restDays=(refTime-new Date(mostRecent.fixture.date).getTime())/(24*3600*1000);
+    }
+  }
   return {
     home:{avgScored:avg(homeScored,1.4), avgConceded:avg(homeConceded,1.1)},
-    away:{avgScored:avg(awayScored,1.1), avgConceded:avg(awayConceded,1.4)}
+    away:{avgScored:avg(awayScored,1.1), avgConceded:avg(awayConceded,1.4)},
+    restDays
   };
 }
 
@@ -664,19 +678,19 @@ const BRIER_TRACKER_KEY='pronosBrierTracker_v1';
 const BRIER_RATIOS=[1,0.85,0.7,0.5,0.3,0.15,0]; // 1 = 100% cotes, 0 = 100% forme
 function loadBrierTracker(){ try{ return JSON.parse(localStorage.getItem(BRIER_TRACKER_KEY)||'[]'); }catch(e){ return []; } }
 function saveBrierTracker(arr){ try{ localStorage.setItem(BRIER_TRACKER_KEY, JSON.stringify(arr)); }catch(e){ console.warn('[pronos] Sauvegarde du suivi Brier impossible:', e.message); } }
-function recordPrediction(fixture, oddsLh, oddsLa, formLh, formLa){
+function recordPrediction(fixture, oddsLh, oddsLa, formLh, formLa, h2h){
   const tracker=loadBrierTracker();
   if(tracker.find(t=>t.fixtureId===fixture.fixture.id)) return;
-  tracker.push({ fixtureId:fixture.fixture.id, kickoff:fixture.fixture.date, oddsLh, oddsLa, formLh, formLa, resolved:false, actualH:null, actualA:null });
+  tracker.push({ fixtureId:fixture.fixture.id, kickoff:fixture.fixture.date, oddsLh, oddsLa, formLh, formLa, h2h:h2h||null, resolved:false, actualH:null, actualA:null });
   if(tracker.length>800) tracker.splice(0, tracker.length-800);
   saveBrierTracker(tracker);
 }
-function recordPredictionResolved(fixture, oddsLh, oddsLa, formLh, formLa){
+function recordPredictionResolved(fixture, oddsLh, oddsLa, formLh, formLa, h2h){
   // Variante utilisée par le Rattrapage historique : le résultat est déjà connu au moment de
   // l'enregistrement, donc on l'enregistre directement comme résolu.
   const tracker=loadBrierTracker();
   if(tracker.find(t=>t.fixtureId===fixture.fixture.id)) return;
-  tracker.push({ fixtureId:fixture.fixture.id, kickoff:fixture.fixture.date, oddsLh, oddsLa, formLh, formLa, resolved:true, actualH:fixture.goals.home, actualA:fixture.goals.away });
+  tracker.push({ fixtureId:fixture.fixture.id, kickoff:fixture.fixture.date, oddsLh, oddsLa, formLh, formLa, h2h:h2h||null, resolved:true, actualH:fixture.goals.home, actualA:fixture.goals.away });
   if(tracker.length>800) tracker.splice(0, tracker.length-800);
   saveBrierTracker(tracker);
 }
@@ -707,6 +721,25 @@ function computeBrierByRatio(tracker){
     return {ratio:w, n:evaluated.length, brier:evaluated.length>0?sum/evaluated.length:null};
   });
 }
+// Teste si mélanger un peu d'historique face-à-face aux probabilités issues des cotes améliore ou
+// dégrade la précision (même principe que cotes-vs-forme), avant de décider si ça mérite d'influencer
+// le modèle réel. Lissage de Laplace sur le H2H (échantillon souvent très petit, 5 matchs maximum)
+// pour éviter qu'un 3-0-0 ne donne une confiance de 100% non justifiée.
+function computeBrierByH2HRatio(tracker){
+  const evaluated=tracker.filter(t=>t.resolved && t.actualH!==null && t.h2h && t.h2h.n>0);
+  return BRIER_RATIOS.map(w=>{
+    let sum=0;
+    evaluated.forEach(r=>{
+      const mpOdds=computeModelProbabilities(r.oddsLh,r.oddsLa);
+      const n=r.h2h.n;
+      const h2hPH=(r.h2h.hWins+1)/(n+3), h2hPD=(r.h2h.draws+1)/(n+3), h2hPA=(r.h2h.aWins+1)/(n+3);
+      const pH=w*mpOdds.pH+(1-w)*h2hPH, pD=w*mpOdds.pD+(1-w)*h2hPD, pA=w*mpOdds.pA+(1-w)*h2hPA;
+      const actualH=r.actualH>r.actualA?1:0, actualD=r.actualH===r.actualA?1:0, actualA=r.actualA>r.actualH?1:0;
+      sum += Math.pow(pH-actualH,2)+Math.pow(pD-actualD,2)+Math.pow(pA-actualA,2);
+    });
+    return {ratio:w, n:evaluated.length, brier:evaluated.length>0?sum/evaluated.length:null};
+  });
+}
 function renderBrierPanel(){
   const el=document.getElementById('brierTrackerPanel');
   if(!el) return;
@@ -717,7 +750,15 @@ function renderBrierPanel(){
   const sorted=[...results].sort((a,b)=>(a.brier??Infinity)-(b.brier??Infinity));
   const best=sorted[0];
   el.innerHTML=`<div style="font-size:11px;color:#8a9ab8;margin-bottom:8px;">${n} match${n>1?'s':''} résolu${n>1?'s':''} · score de Brier, plus bas = meilleur</div>`+
-    results.map(r=>`<div class="debug-log-entry${r.ratio===best.ratio?' best':''}">Cotes ${Math.round(r.ratio*100)}% / Forme ${Math.round((1-r.ratio)*100)}% → Brier ${r.brier!==null?r.brier.toFixed(4):'—'} (n=${r.n})</div>`).join('');
+    results.map(r=>`<div class="debug-log-entry${r.ratio===best.ratio?' best':''}">Cotes ${Math.round(r.ratio*100)}% / Forme ${Math.round((1-r.ratio)*100)}% → Brier ${r.brier!==null?r.brier.toFixed(4):'—'} (n=${r.n})</div>`).join('')+
+    (()=>{
+      const h2hResults=computeBrierByH2HRatio(tracker);
+      const h2hN=h2hResults[0]?.n||0;
+      if(h2hN===0) return '';
+      const h2hBest=[...h2hResults].sort((a,b)=>(a.brier??Infinity)-(b.brier??Infinity))[0];
+      return `<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin:10px 0 4px;">Test : cotes vs historique face-à-face</div>`+
+        h2hResults.map(r=>`<div class="debug-log-entry${r.ratio===h2hBest.ratio?' best':''}">Cotes ${Math.round(r.ratio*100)}% / H2H ${Math.round((1-r.ratio)*100)}% → Brier ${r.brier!==null?r.brier.toFixed(4):'—'} (n=${r.n})</div>`).join('');
+    })();
 }
 async function refreshBrierPanel(){
   const el=document.getElementById('brierTrackerPanel');
@@ -750,25 +791,27 @@ async function getValueBetsForFixture(fixture) {
 // probabilité : on n'a aucune donnée pour calibrer correctement leur poids, et un mauvais dosage
 // fausserait le modèle silencieusement (cf. le bug de calibration Total buts diagnostiqué plus tôt).
 // Ils sont affichés comme information brute pour aider ta propre lecture du match.
+// Extrait pour être réutilisé à la fois par l'affichage contextuel et par le test empirique H2H
+// ci-dessous, sans dupliquer l'appel réseau à chaque fois.
+async function getH2HRecord(homeId, awayId) {
+  const h2h=await apiGet(`/fixtures/headtohead?h2h=${homeId}-${awayId}&last=5`);
+  if(!h2h || !h2h.length) return null;
+  let hWins=0,aWins=0,draws=0;
+  h2h.forEach(f=>{
+    if(!isFinished(f)||f.goals.home===null) return;
+    const hIsHomeHere=f.teams.home.id===homeId;
+    const hg=hIsHomeHere?f.goals.home:f.goals.away, ag=hIsHomeHere?f.goals.away:f.goals.home;
+    if(hg>ag)hWins++; else if(hg<ag)aWins++; else draws++;
+  });
+  return {hWins,aWins,draws,n:h2h.length};
+}
 async function getMatchContext(fixture) {
   const home=fixture.teams.home, away=fixture.teams.away;
   const ctx={h2h:null, injuries:null, lineups:null, stakes:null};
   const round=(fixture.league.round||'').toLowerCase();
   const stakesKeywords=['final','semi-final','semifinal','quarter-final','quarterfinal','play-off','playoff','relegation','promotion'];
   if(stakesKeywords.some(k=>round.includes(k))) ctx.stakes=fixture.league.round;
-  try{
-    const h2h=await apiGet(`/fixtures/headtohead?h2h=${home.id}-${away.id}&last=5`);
-    if(h2h && h2h.length){
-      let hWins=0,aWins=0,draws=0;
-      h2h.forEach(f=>{
-        if(!isFinished(f)||f.goals.home===null) return;
-        const hIsHomeHere=f.teams.home.id===home.id;
-        const hg=hIsHomeHere?f.goals.home:f.goals.away, ag=hIsHomeHere?f.goals.away:f.goals.home;
-        if(hg>ag)hWins++; else if(hg<ag)aWins++; else draws++;
-      });
-      ctx.h2h={hWins,aWins,draws,n:h2h.length};
-    }
-  }catch(e){ console.warn(`[pronos] Historique face-à-face indisponible pour fixture ${fixture.fixture.id} :`, e.message); }
+  try{ ctx.h2h=await getH2HRecord(home.id,away.id); }catch(e){ console.warn(`[pronos] Historique face-à-face indisponible pour fixture ${fixture.fixture.id} :`, e.message); }
   try{
     const inj=await apiGet(`/injuries?fixture=${fixture.fixture.id}`);
     if(inj && inj.length) ctx.injuries=inj.map(i=>({team:i.team?.name||'?', player:i.player?.name||'?', reason:i.player?.reason||i.player?.type||''}));
@@ -839,9 +882,13 @@ async function showPredictions(fixture,container,btn) {
       }catch(e){}
       if(baseLh===undefined){
         try{
-          const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id),getTeamForm(away.id)]);
+          const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id,fixture.fixture.date),getTeamForm(away.id,fixture.fixture.date)]);
           baseLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
           baseLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
+          // Effet fatigue conservateur et plafonné : l'ampleur exacte est débattue dans la littérature,
+          // donc on limite volontairement l'impact à -8% max plutôt que de deviner un poids agressif.
+          if(homeForm.restDays!==null && homeForm.restDays<3) baseLh*=0.92;
+          if(awayForm.restDays!==null && awayForm.restDays<3) baseLa*=0.92;
           source='forme récente';
         }catch(e){ console.warn(`[pronos] Forme indisponible pour fixture ${fixture.fixture.id}, repli sur moyenne générique :`, e.message); }
       }
@@ -888,10 +935,12 @@ async function showPredictions(fixture,container,btn) {
       } else {
         valueBets.forEach(vb=>recordValueBet(fixture,vb));
         try{
-          const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id),getTeamForm(away.id)]);
+          const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id,fixture.fixture.date),getTeamForm(away.id,fixture.fixture.date)]);
           const formLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
           const formLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
-          recordPrediction(fixture, lh, la, formLh, formLa);
+          let h2h=null;
+          try{ h2h=await getH2HRecord(home.id, away.id); }catch(e){}
+          recordPrediction(fixture, lh, la, formLh, formLa, h2h);
         }catch(e){ console.warn(`[pronos] Forme récente indisponible pour fixture ${fixture.fixture.id} :`, e.message); }
         if(valueBets.length===0){
           html+=`<div class="no-odds">✅ Aucun value bet détecté.<br>Les cotes semblent correctement évaluées.</div>`;
