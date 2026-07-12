@@ -721,6 +721,18 @@ async function showPredictions(fixture,container,btn) {
   try {
     const home=fixture.teams.home,away=fixture.teams.away;let html="";
     if(live) {
+      // Le score/minute affichés dans la liste viennent du dernier chargement global (toutes les 2
+      // minutes) — potentiellement dépassé. On récupère ce match précis en frais avant de calculer
+      // quoi que ce soit, pour éviter d'analyser un score qui n'est déjà plus le bon.
+      try{
+        const freshData=await apiGet(`/fixtures?id=${fixture.fixture.id}`);
+        const fresh=freshData && freshData[0];
+        if(fresh){
+          fixture=fresh; // remplace la version potentiellement périmée par la version fraîche
+          const idx=allFixtures.findIndex(f=>f.fixture.id===fresh.fixture.id);
+          if(idx>=0) allFixtures[idx]=fresh; // garde la liste globale cohérente si on la réaffiche
+        }
+      }catch(e){ console.warn(`[pronos] Rafraîchissement direct fixture ${fixture.fixture.id} échoué, score potentiellement pas à jour :`, e.message); }
       const elapsed=fixture.fixture.status.elapsed??45,remaining=Math.max(0,90-elapsed);
       const hG=fixture.goals.home??0,aG=fixture.goals.away??0,sd=hG-aG;
       let ls=null;
