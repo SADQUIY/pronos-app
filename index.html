@@ -787,6 +787,9 @@ async function getValueBetsForFixture(fixture) {
   const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
   const {lh,la}=estimateLambdas(nH,nD,nA);
   let modelProbs=computeModelProbabilities(lh,la);
+  // Diagnostic temporaire : permet de vérifier si les cotes brutes 1xBet sont bien lues telles
+  // quelles, ou si un souci de lecture aplatit artificiellement les probabilités du modèle.
+  console.warn(`[pronos] Diag calibration ${home.name} vs ${away.name} : cotes brutes 1X2=[${parsed.home1x2},${parsed.draw1x2},${parsed.away1x2}] → implicite=[${(nH*100).toFixed(0)}%,${(nD*100).toFixed(0)}%,${(nA*100).toFixed(0)}%] → modèle=[${(modelProbs.pH*100).toFixed(0)}%,${(modelProbs.pD*100).toFixed(0)}%,${(modelProbs.pA*100).toFixed(0)}%]`);
   const overTargets=buildOverTargets(parsed);
   if(overTargets.length){
     const {lh:ouLh,la:ouLa}=estimateLambdas(nH,nD,nA,overTargets);
