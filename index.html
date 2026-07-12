@@ -530,6 +530,37 @@ function computeModelProbabilities(lh, la) {
   return {pH,pD,pA,pO05,pO15,pO25,pO35,pBTTS,pNilNil,pSD,p1HO05,p1HO15,p2HO05,p2HO15,pHScore05,pHScore15,pAScore05,pAScore15,pWTNH,pWTNA,pWTNAny:pWTNH+pWTNA,htftMap,pWBH,pWBA,pDB,pBEH};
 }
 
+// Projette le modèle calibré (cotes ou forme, pas une formule à paliers fixes) sur le temps restant
+// d'un match en direct, en partant du score déjà acquis. baseLh/baseLa sont les lambdas PLEIN MATCH
+// (90 min) du modèle pré-match ; on les met à l'échelle du temps restant pour obtenir les buts
+// ATTENDUS à venir, puis on combine avec le score déjà marqué pour obtenir les probabilités finales.
+// C'est ce qui fait que deux matchs à un score/minute identiques donnent des résultats différents
+// selon la force réelle des équipes, au lieu de toujours la même prédiction.
+function computeLiveProbabilities(baseLh, baseLa, hG, aG, remaining, domAdjust=0) {
+  const frac=Math.max(0.02, remaining/90);
+  const lhRem=Math.max(0.02, baseLh*frac*(1+domAdjust*0.3));
+  const laRem=Math.max(0.02, baseLa*frac*(1-domAdjust*0.3));
+  const max=6, M=buildScoreMatrix(lhRem,laRem,max);
+  let pH=0,pD=0,pA=0,pBTTS=0,pWTNH=0,pWTNA=0;
+  const totalDist={}; // distribution du nombre de buts ADDITIONNELS (pas total final)
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+    const p=M[i][j], finalH=hG+i, finalA=aG+j;
+    if(finalH>finalA)pH+=p; else if(finalH===finalA)pD+=p; else pA+=p;
+    if(finalH>0 && finalA>0) pBTTS+=p;
+    if(finalH>finalA && finalA===0) pWTNH+=p; // le domicile gagne sans avoir encaissé
+    if(finalA>finalH && finalH===0) pWTNA+=p; // l'extérieur gagne sans avoir encaissé
+    const add=i+j; totalDist[add]=(totalDist[add]||0)+p;
+  }
+  return {pH,pD,pA,pBTTS,pWTNH,pWTNA,totalDist,lhRem,laRem};
+}
+// Probabilité que le total de buts FINAL dépasse `line`, à partir de la distribution des buts
+// additionnels calculée ci-dessus et du total déjà marqué.
+function liveOverProb(totalDist, currentTotal, line) {
+  let p=0;
+  Object.entries(totalDist).forEach(([add,prob])=>{ if(currentTotal+Number(add)>line) p+=prob; });
+  return p;
+}
+
 function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
   const valueBets=[];
   function checkValue(market,pick,modelProb,odd1xbet){
@@ -734,21 +765,74 @@ async function showPredictions(fixture,container,btn) {
         }
       }catch(e){ console.warn(`[pronos] Rafraîchissement direct fixture ${fixture.fixture.id} échoué, score potentiellement pas à jour :`, e.message); }
       const elapsed=fixture.fixture.status.elapsed??45,remaining=Math.max(0,90-elapsed);
-      const hG=fixture.goals.home??0,aG=fixture.goals.away??0,sd=hG-aG;
+      const hG=fixture.goals.home??0,aG=fixture.goals.away??0;
       let ls=null;
-      try{const sr=await apiGet(`/fixtures/statistics?fixture=${fixture.fixture.id}`);if(sr&&sr.length>=2){const gS=(ts,t)=>{const s=ts.statistics.find(s=>s.type===t);return s?(parseInt(s.value)||0):0;};const hS=sr.find(t=>t.team.id===home.id)||sr[0],aS=sr.find(t=>t.team.id===away.id)||sr[1];ls={hP:gS(hS,"Ball Possession")||50,aP:gS(aS,"Ball Possession")||50,hSh:gS(hS,"Total Shots"),aSh:gS(aS,"Total Shots"),hShOn:gS(hS,"Shots on Goal"),aShOn:gS(aS,"Shots on Goal"),hC:gS(hS,"Corner Kicks"),aC:gS(aS,"Corner Kicks")};}}catch(e){}
+      try{const sr=await apiGet(`/fixtures/statistics?fixture=${fixture.fixture.id}`);if(sr&&sr.length>=2){const gS=(ts,t)=>{const s=ts.statistics.find(s=>s.type===t);return s?(parseInt(s.value)||0):0;};const hS=sr.find(t=>t.team.id===home.id)||sr[0],aS=sr.find(t=>t.team.id===away.id)||sr[1];ls={hP:gS(hS,"Ball Possession")||50,aP:gS(aS,"Ball Possession")||50,hSh:gS(hS,"Total Shots"),aSh:gS(aS,"Total Shots"),hShOn:gS(hS,"Shots on Goal"),aShOn:gS(aS,"Shots on Goal"),hC:gS(hS,"Corner Kicks"),aC:gS(aS,"Corner Kicks"),hRed:gS(hS,"Red Cards"),aRed:gS(aS,"Red Cards")};}}catch(e){}
       html=`<div class="live-header-note">🔴 ${elapsed}' | Score: ${hG}-${aG}</div>`;
-      if(ls)html+=`<div class="stats-box">📊 <b>${home.name}</b>: ${ls.hP}% poss · ${ls.hSh} tirs (${ls.hShOn} cadrés) · ${ls.hC} corners<br>📊 <b>${away.name}</b>: ${ls.aP}% poss · ${ls.aSh} tirs (${ls.aShOn} cadrés) · ${ls.aC} corners</div>`;
-      let pH,pD,pA;const dom=ls?(ls.hP-50)/100:0;
-      if(remaining<=5){pH=sd>0?0.93:sd<0?0.03:0.12;pD=sd===0?0.82:0.05;pA=sd<0?0.93:sd>0?0.03:0.12;}
-      else if(remaining<=20){pH=sd>0?0.75:sd<0?0.12:0.28+dom*0.25;pD=sd===0?0.48:0.13;pA=sd<0?0.75:sd>0?0.12:0.24-dom*0.25;}
-      else if(remaining<=45){pH=sd>0?0.58:sd<0?0.22:0.33+dom*0.15;pD=sd===0?0.38:0.20;pA=sd<0?0.58:sd>0?0.22:0.29-dom*0.15;}
-      else{pH=sd>0?0.48:sd<0?0.28:0.35+dom*0.1;pD=sd===0?0.30:0.22;pA=sd<0?0.48:sd>0?0.28:0.32-dom*0.1;}
-      const sR=pH+pD+pA;pH/=sR;pD/=sR;pA/=sR;
+      if(ls)html+=`<div class="stats-box">📊 <b>${home.name}</b>: ${ls.hP}% poss · ${ls.hSh} tirs (${ls.hShOn} cadrés) · ${ls.hC} corners${ls.hRed>0?` · 🟥 ${ls.hRed}`:''}<br>📊 <b>${away.name}</b>: ${ls.aP}% poss · ${ls.aSh} tirs (${ls.aShOn} cadrés) · ${ls.aC} corners${ls.aRed>0?` · 🟥 ${ls.aRed}`:''}</div>`;
+      // La possession seule est un indicateur faible de qui menace vraiment le but adverse ; les
+      // tirs cadrés le sont bien plus. On combine les trois signaux déjà récupérés (avant, seule la
+      // possession était utilisée, les tirs et corners n'étaient affichés que sans influencer le calcul).
+      let dom=0;
+      if(ls){
+        const possDiff=(ls.hP-50)/100;
+        const shotsOnDiff=Math.max(-0.5,Math.min(0.5,(ls.hShOn-ls.aShOn)/8));
+        const cornersDiff=Math.max(-0.5,Math.min(0.5,(ls.hC-ls.aC)/12));
+        dom=possDiff*0.2+shotsOnDiff*0.55+cornersDiff*0.25;
+      }
+      // On réutilise le VRAI modèle calibré (cotes si dispo, sinon forme récente) au lieu d'une
+      // formule à paliers fixes — sans ça, deux matchs à score/minute identiques donnaient toujours
+      // exactement la même prédiction, peu importe la force réelle des équipes.
+      let baseLh, baseLa, source;
+      try{
+        const oddsData=await apiGet(`/odds?fixture=${fixture.fixture.id}&bookmaker=${BOOKMAKER_1XBET}`);
+        const parsed=parseOdds1xbet(oddsData,home.name,away.name);
+        if(parsed && parsed.home1x2){
+          const rawH=oddsToProb(parsed.home1x2),rawD=oddsToProb(parsed.draw1x2||2),rawA=oddsToProb(parsed.away1x2);
+          const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
+          ({lh:baseLh,la:baseLa}=estimateLambdas(nH,nD,nA));
+          source='cotes 1xBet';
+        }
+      }catch(e){}
+      if(baseLh===undefined){
+        try{
+          const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id),getTeamForm(away.id)]);
+          baseLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
+          baseLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
+          source='forme récente';
+        }catch(e){ console.warn(`[pronos] Forme indisponible pour fixture ${fixture.fixture.id}, repli sur moyenne générique :`, e.message); }
+      }
+      if(baseLh===undefined){ baseLh=1.35; baseLa=1.1; source='moyenne générique (aucune donnée)'; }
+      // Une expulsion réduit fortement la capacité offensive de l'équipe en infériorité numérique et
+      // facilite légèrement celle de l'adversaire (effet bien documenté, environ -35% d'attaque par
+      // joueur en moins). On l'applique sur les lambdas AVANT projection, pas seulement en affichage.
+      if(ls && ((ls.hRed||0)>0 || (ls.aRed||0)>0)){
+        const hRed=ls.hRed||0, aRed=ls.aRed||0;
+        baseLh *= Math.pow(0.65, hRed) * Math.pow(1.12, aRed);
+        baseLa *= Math.pow(0.65, aRed) * Math.pow(1.12, hRed);
+      }
+      const {pH,pD,pA,pBTTS,pWTNH,pWTNA,totalDist}=computeLiveProbabilities(baseLh,baseLa,hG,aG,remaining,dom);
+      html+=`<div style="font-size:10px;color:#8a9ab8;margin-bottom:6px;">Basé sur : ${source}, projeté sur ${remaining} min restantes</div>`;
       html+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin-bottom:6px;">📊 Probabilités en temps réel</div>`;
       [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}].sort((a,b)=>b.p-a.p).forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
-      const tG=hG+aG,gr=elapsed>0?tG/elapsed:0,proj=tG+gr*remaining,pO25=tG>=3?1:Math.max(0.05,Math.min(0.95,(proj-2.5)/2+0.5));
-      html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${pO25>=0.5?'Plus de 2.5 buts':'Moins de 2.5 buts'}</div>${confidenceBarHTML(pO25>=0.5?pO25:1-pO25)}</div>`;
+      const tG=hG+aG;
+      // On affiche toujours le PROCHAIN seuil pas encore atteint (tG+0.5), jamais un seuil fixe à 2.5 :
+      // si 4 buts sont déjà marqués, prédire "Plus de 2.5 buts" à 100% n'est pas une prédiction, c'est
+      // un fait déjà acquis. Le seuil dynamique reste une vraie question ouverte sur la suite du match.
+      const nextLine=tG+0.5;
+      const pOverNext=liveOverProb(totalDist, tG, nextLine);
+      html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${pOverNext>=0.5?`Plus de ${nextLine} buts au total`:`Moins de ${nextLine} buts au total`}</div>${confidenceBarHTML(pOverNext>=0.5?pOverNext:1-pOverNext)}</div>`;
+      // Marchés supplémentaires (mêmes que l'avant-match), calculés à partir de la même grille de
+      // scores projetée — pas de nouvelle logique, juste plus de lectures du même modèle.
+      html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:10px 0 4px;text-transform:uppercase;letter-spacing:0.5px;">Autres marchés</div>`;
+      [
+        {label:`${home.name} ou Nul`, p:pH+pD},
+        {label:`${away.name} ou Nul`, p:pD+pA},
+        {label:`${home.name} ou ${away.name}`, p:pH+pA},
+        {label:'BTTS (les deux marquent)', p:pBTTS},
+        ...(hG===0?[{label:`${away.name} gagne sans encaisser`, p:pWTNA}]:[]),
+        ...(aG===0?[{label:`${home.name} gagne sans encaisser`, p:pWTNH}]:[])
+      ].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
     } else {
       html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
       const {parsed, modelProbs, valueBets, lh, la}=await getValueBetsForFixture(fixture);
