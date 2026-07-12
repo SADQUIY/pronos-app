@@ -123,6 +123,10 @@
       </div>
     </div>
     <div class="debug-section">
+      <div class="debug-section-title">📊 Fiabilité cotes vs forme <button class="debug-panel-btn" onclick="refreshBrierPanel()">Vérifier les résultats</button></div>
+      <div id="brierTrackerPanel" class="debug-log"></div>
+    </div>
+    <div class="debug-section">
       <div class="debug-section-title">💰 Rentabilité des value bets <button class="debug-panel-btn" onclick="refreshVBTrackerPanel()">Vérifier les résultats</button></div>
       <div id="vbTrackerPanel" class="debug-log"></div>
     </div>
@@ -194,7 +198,7 @@ function renderDebugLog(){
 function toggleDebugPanel(){
   const panel=document.getElementById('debugPanel'); if(!panel) return;
   const open=panel.classList.toggle('open');
-  if(open){ renderDebugLog(); debugUnread=0; updateDebugBadge(); renderVBTrackerPanel(); }
+  if(open){ renderDebugLog(); debugUnread=0; updateDebugBadge(); renderVBTrackerPanel(); renderBrierPanel(); }
 }
 function clearDebugLog(){ debugLog=[]; renderDebugLog(); }
 async function copyDebugLog(){
@@ -405,9 +409,15 @@ async function runHistoricalBackfill(){
   let valueBetsFound=0, checked=0;
   for(const fixture of batch){
     try{
-      const {parsed, valueBets}=await getValueBetsForFixture(fixture);
+      const {parsed, valueBets, lh, la}=await getValueBetsForFixture(fixture);
       if(parsed && parsed.home1x2){
         valueBets.forEach(vb=>{ if(resolveValueBetNow(fixture,vb)) valueBetsFound++; });
+        try{
+          const [homeForm,awayForm]=await Promise.all([getTeamForm(fixture.teams.home.id),getTeamForm(fixture.teams.away.id)]);
+          const formLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
+          const formLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
+          recordPredictionResolved(fixture, lh, la, formLh, formLa);
+        }catch(e){ /* forme indisponible : on ignore silencieusement, ce n'est pas critique ici */ }
       }
     }catch(e){
       console.warn(`[pronos] Rattrapage : erreur sur fixture ${fixture.fixture.id} :`, e.message);
@@ -598,6 +608,93 @@ function confidenceBarHTML(v) {
 // Calcule le modèle et détecte les value bets pour un match donné, à partir des cotes 1xBet.
 // Factorisé pour être utilisé aussi bien par l'analyse en direct (showPredictions) que par le
 // Rattrapage historique, afin de ne jamais faire diverger la logique entre les deux.
+// Calcule la forme récente d'une équipe (10 derniers matchs), séparée domicile/extérieur, avec un
+// lissage bayésien (mélange avec une moyenne a priori) pour éviter qu'un petit échantillon ne
+// produise des estimations extrêmes.
+async function getTeamForm(teamId) {
+  const data=await apiGet(`/fixtures?team=${teamId}&last=10`);
+  let homeScored=[],homeConceded=[],awayScored=[],awayConceded=[];
+  (data||[]).forEach(f=>{
+    if(!isFinished(f)||f.goals.home===null) return;
+    if(f.teams.home.id===teamId){ homeScored.push(f.goals.home); homeConceded.push(f.goals.away); }
+    else if(f.teams.away.id===teamId){ awayScored.push(f.goals.away); awayConceded.push(f.goals.home); }
+  });
+  const avg=(arr,prior,priorWeight=3)=>(arr.reduce((s,v)=>s+v,0)+prior*priorWeight)/(arr.length+priorWeight);
+  return {
+    home:{avgScored:avg(homeScored,1.4), avgConceded:avg(homeConceded,1.1)},
+    away:{avgScored:avg(awayScored,1.1), avgConceded:avg(awayConceded,1.4)}
+  };
+}
+
+// --- Tracker Brier : compare la précision du 1X2 dérivé des cotes 1xBet à celle dérivée de la forme
+// récente (et de mélanges des deux), sur les matchs déjà résolus. Un score de Brier plus bas = plus
+// précis. Sert à vérifier objectivement si mélanger un peu de forme améliore ou dégrade le modèle.
+const BRIER_TRACKER_KEY='pronosBrierTracker_v1';
+const BRIER_RATIOS=[1,0.85,0.7,0.5,0.3,0.15,0]; // 1 = 100% cotes, 0 = 100% forme
+function loadBrierTracker(){ try{ return JSON.parse(localStorage.getItem(BRIER_TRACKER_KEY)||'[]'); }catch(e){ return []; } }
+function saveBrierTracker(arr){ try{ localStorage.setItem(BRIER_TRACKER_KEY, JSON.stringify(arr)); }catch(e){ console.warn('[pronos] Sauvegarde du suivi Brier impossible:', e.message); } }
+function recordPrediction(fixture, oddsLh, oddsLa, formLh, formLa){
+  const tracker=loadBrierTracker();
+  if(tracker.find(t=>t.fixtureId===fixture.fixture.id)) return;
+  tracker.push({ fixtureId:fixture.fixture.id, kickoff:fixture.fixture.date, oddsLh, oddsLa, formLh, formLa, resolved:false, actualH:null, actualA:null });
+  if(tracker.length>800) tracker.splice(0, tracker.length-800);
+  saveBrierTracker(tracker);
+}
+function recordPredictionResolved(fixture, oddsLh, oddsLa, formLh, formLa){
+  // Variante utilisée par le Rattrapage historique : le résultat est déjà connu au moment de
+  // l'enregistrement, donc on l'enregistre directement comme résolu.
+  const tracker=loadBrierTracker();
+  if(tracker.find(t=>t.fixtureId===fixture.fixture.id)) return;
+  tracker.push({ fixtureId:fixture.fixture.id, kickoff:fixture.fixture.date, oddsLh, oddsLa, formLh, formLa, resolved:true, actualH:fixture.goals.home, actualA:fixture.goals.away });
+  if(tracker.length>800) tracker.splice(0, tracker.length-800);
+  saveBrierTracker(tracker);
+}
+async function evaluateBrierTracker(){
+  const tracker=loadBrierTracker();
+  const now=Date.now();
+  const pending=tracker.filter(t=>!t.resolved && (now-new Date(t.kickoff).getTime())>2.5*60*60*1000);
+  for(const rec of pending){
+    try{
+      const data=await apiGet(`/fixtures?id=${rec.fixtureId}`);
+      const fx=data && data[0];
+      if(!fx || !DONE_STATUSES.includes(fx.fixture.status.short) || fx.goals.home===null) continue;
+      rec.resolved=true; rec.actualH=fx.goals.home; rec.actualA=fx.goals.away;
+    }catch(e){ console.warn(`[pronos] Vérification Brier fixture ${rec.fixtureId} échouée :`, e.message); }
+  }
+  saveBrierTracker(tracker);
+}
+function computeBrierByRatio(tracker){
+  const evaluated=tracker.filter(t=>t.resolved && t.actualH!==null);
+  return BRIER_RATIOS.map(w=>{
+    let sum=0;
+    evaluated.forEach(r=>{
+      const lh=w*r.oddsLh+(1-w)*r.formLh, la=w*r.oddsLa+(1-w)*r.formLa;
+      const mp=computeModelProbabilities(lh,la);
+      const actualH=r.actualH>r.actualA?1:0, actualD=r.actualH===r.actualA?1:0, actualA=r.actualA>r.actualH?1:0;
+      sum += Math.pow(mp.pH-actualH,2)+Math.pow(mp.pD-actualD,2)+Math.pow(mp.pA-actualA,2);
+    });
+    return {ratio:w, n:evaluated.length, brier:evaluated.length>0?sum/evaluated.length:null};
+  });
+}
+function renderBrierPanel(){
+  const el=document.getElementById('brierTrackerPanel');
+  if(!el) return;
+  const tracker=loadBrierTracker();
+  const results=computeBrierByRatio(tracker);
+  const n=results[0]?.n||0;
+  if(n===0){ el.innerHTML='<div class="debug-empty">Aucun match résolu pour l\'instant.</div>'; return; }
+  const sorted=[...results].sort((a,b)=>(a.brier??Infinity)-(b.brier??Infinity));
+  const best=sorted[0];
+  el.innerHTML=`<div style="font-size:11px;color:#8a9ab8;margin-bottom:8px;">${n} match${n>1?'s':''} résolu${n>1?'s':''} · score de Brier, plus bas = meilleur</div>`+
+    results.map(r=>`<div class="debug-log-entry${r.ratio===best.ratio?' best':''}">Cotes ${Math.round(r.ratio*100)}% / Forme ${Math.round((1-r.ratio)*100)}% → Brier ${r.brier!==null?r.brier.toFixed(4):'—'} (n=${r.n})</div>`).join('');
+}
+async function refreshBrierPanel(){
+  const el=document.getElementById('brierTrackerPanel');
+  if(el) el.innerHTML='<div class="debug-empty">Vérification des résultats en cours...</div>';
+  await evaluateBrierTracker();
+  renderBrierPanel();
+}
+
 async function getValueBetsForFixture(fixture) {
   const home=fixture.teams.home, away=fixture.teams.away;
   let oddsData=null;
@@ -614,7 +711,7 @@ async function getValueBetsForFixture(fixture) {
     modelProbs=withJointOUProbs(modelProbs,ouLh,ouLa);
   }
   const valueBets=findValueBets(modelProbs,parsed,home.name,away.name);
-  return {parsed, modelProbs, valueBets};
+  return {parsed, modelProbs, valueBets, lh, la};
 }
 
 async function showPredictions(fixture,container,btn) {
@@ -642,11 +739,17 @@ async function showPredictions(fixture,container,btn) {
       html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${pO25>=0.5?'Plus de 2.5 buts':'Moins de 2.5 buts'}</div>${confidenceBarHTML(pO25>=0.5?pO25:1-pO25)}</div>`;
     } else {
       html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
-      const {parsed, modelProbs, valueBets}=await getValueBetsForFixture(fixture);
+      const {parsed, modelProbs, valueBets, lh, la}=await getValueBetsForFixture(fixture);
       if(!parsed||!parsed.home1x2){
         html+=`<div class="no-odds">⚠️ Cotes 1xBet non disponibles pour ce match.</div>`;
       } else {
         valueBets.forEach(vb=>recordValueBet(fixture,vb));
+        try{
+          const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id),getTeamForm(away.id)]);
+          const formLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
+          const formLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
+          recordPrediction(fixture, lh, la, formLh, formLa);
+        }catch(e){ console.warn(`[pronos] Forme récente indisponible pour fixture ${fixture.fixture.id} :`, e.message); }
         if(valueBets.length===0){
           html+=`<div class="no-odds">✅ Aucun value bet détecté.<br>Les cotes semblent correctement évaluées.</div>`;
         } else {
