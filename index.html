@@ -745,6 +745,49 @@ async function getValueBetsForFixture(fixture) {
   return {parsed, modelProbs, valueBets, lh, la};
 }
 
+// Contexte additionnel (historique face-à-face, blessures, compositions, enjeu). Contrairement aux
+// cartons rouges (effet numérique validé), ces facteurs ne sont PAS injectés dans le calcul de
+// probabilité : on n'a aucune donnée pour calibrer correctement leur poids, et un mauvais dosage
+// fausserait le modèle silencieusement (cf. le bug de calibration Total buts diagnostiqué plus tôt).
+// Ils sont affichés comme information brute pour aider ta propre lecture du match.
+async function getMatchContext(fixture) {
+  const home=fixture.teams.home, away=fixture.teams.away;
+  const ctx={h2h:null, injuries:null, lineups:null, stakes:null};
+  const round=(fixture.league.round||'').toLowerCase();
+  const stakesKeywords=['final','semi-final','semifinal','quarter-final','quarterfinal','play-off','playoff','relegation','promotion'];
+  if(stakesKeywords.some(k=>round.includes(k))) ctx.stakes=fixture.league.round;
+  try{
+    const h2h=await apiGet(`/fixtures/headtohead?h2h=${home.id}-${away.id}&last=5`);
+    if(h2h && h2h.length){
+      let hWins=0,aWins=0,draws=0;
+      h2h.forEach(f=>{
+        if(!isFinished(f)||f.goals.home===null) return;
+        const hIsHomeHere=f.teams.home.id===home.id;
+        const hg=hIsHomeHere?f.goals.home:f.goals.away, ag=hIsHomeHere?f.goals.away:f.goals.home;
+        if(hg>ag)hWins++; else if(hg<ag)aWins++; else draws++;
+      });
+      ctx.h2h={hWins,aWins,draws,n:h2h.length};
+    }
+  }catch(e){ console.warn(`[pronos] Historique face-à-face indisponible pour fixture ${fixture.fixture.id} :`, e.message); }
+  try{
+    const inj=await apiGet(`/injuries?fixture=${fixture.fixture.id}`);
+    if(inj && inj.length) ctx.injuries=inj.map(i=>({team:i.team?.name||'?', player:i.player?.name||'?', reason:i.player?.reason||i.player?.type||''}));
+  }catch(e){ /* souvent restreint selon le plan API — non bloquant, pas de log pour ne pas polluer */ }
+  try{
+    const lu=await apiGet(`/fixtures/lineups?fixture=${fixture.fixture.id}`);
+    if(lu && lu.length===2) ctx.lineups=lu.map(t=>({team:t.team?.name||'?', formation:t.formation, startXI:(t.startXI||[]).map(p=>p.player?.name).filter(Boolean)}));
+  }catch(e){ /* souvent indisponible avant le coup d'envoi — non bloquant */ }
+  return ctx;
+}
+function renderMatchContext(ctx, homeName, awayName) {
+  let html='';
+  if(ctx.stakes) html+=`<div style="font-size:11px;font-weight:700;color:#b08900;margin:10px 0 4px;">🏆 Match à enjeu : ${ctx.stakes}</div>`;
+  if(ctx.h2h) html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:10px 0 4px;text-transform:uppercase;letter-spacing:0.5px;">Face-à-face (${ctx.h2h.n} derniers)</div><div class="stats-box">${homeName} ${ctx.h2h.hWins}V · Nuls ${ctx.h2h.draws} · ${awayName} ${ctx.h2h.aWins}V</div>`;
+  if(ctx.injuries && ctx.injuries.length) html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:10px 0 4px;text-transform:uppercase;letter-spacing:0.5px;">Absences signalées</div><div class="stats-box">${ctx.injuries.slice(0,6).map(i=>`${i.player} (${i.team}${i.reason?', '+i.reason:''})`).join('<br>')}</div>`;
+  if(ctx.lineups) ctx.lineups.forEach(t=>{ if(t.startXI.length) html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:10px 0 4px;text-transform:uppercase;letter-spacing:0.5px;">Composition ${t.team} ${t.formation?`(${t.formation})`:''}</div><div class="stats-box">${t.startXI.join(', ')}</div>`; });
+  return html;
+}
+
 async function showPredictions(fixture,container,btn) {
   const live=isLive(fixture);
   if(!live&&container.dataset.loaded==="true"){container.style.display=container.style.display==="none"?"block":"none";btn.textContent=container.style.display==="none"?"👁 Analyser":"🙈 Masquer";return;}
@@ -833,6 +876,10 @@ async function showPredictions(fixture,container,btn) {
         ...(hG===0?[{label:`${away.name} gagne sans encaisser`, p:pWTNA}]:[]),
         ...(aG===0?[{label:`${home.name} gagne sans encaisser`, p:pWTNH}]:[])
       ].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+      try{
+        const ctx=await getMatchContext(fixture);
+        html+=renderMatchContext(ctx,home.name,away.name);
+      }catch(e){ console.warn(`[pronos] Contexte additionnel indisponible pour fixture ${fixture.fixture.id} :`, e.message); }
     } else {
       html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
       const {parsed, modelProbs, valueBets, lh, la}=await getValueBetsForFixture(fixture);
@@ -854,6 +901,10 @@ async function showPredictions(fixture,container,btn) {
         }
         html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:12px 0 6px;padding-top:10px;border-top:1px dashed #e0e4ee;text-transform:uppercase;letter-spacing:0.5px;">Probabilités du modèle</div>`;
         [{label:`Victoire ${home.name}`,p:modelProbs.pH},{label:'Match nul',p:modelProbs.pD},{label:`Victoire ${away.name}`,p:modelProbs.pA},{label:'BTTS Oui',p:modelProbs.pBTTS},{label:'Over 2.5',p:modelProbs.pO25}].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+        try{
+          const ctx=await getMatchContext(fixture);
+          html+=renderMatchContext(ctx,home.name,away.name);
+        }catch(e){ console.warn(`[pronos] Contexte additionnel indisponible pour fixture ${fixture.fixture.id} :`, e.message); }
       }
       container.dataset.loaded="true";
     }
