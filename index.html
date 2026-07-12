@@ -127,6 +127,10 @@
       <div id="vbTrackerPanel" class="debug-log"></div>
     </div>
     <div class="debug-section">
+      <div class="debug-section-title">⏩ Rattrapage historique <button class="debug-panel-btn" onclick="runHistoricalBackfill()">Lancer</button></div>
+      <div id="backfillLog" class="debug-log"><div class="debug-empty">Exploite la rétention 7 jours des cotes 1xBet pour évaluer immédiatement des matchs déjà terminés, au lieu d'attendre en temps réel.</div></div>
+    </div>
+    <div class="debug-section">
       <div class="debug-section-title">Journal (console)</div>
       <div id="debugLogContent" class="debug-log"></div>
     </div>
@@ -350,6 +354,72 @@ async function refreshVBTrackerPanel(){
   renderVBTrackerPanel();
 }
 
+// --- Rattrapage historique : les cotes 1xBet restent disponibles ~7 jours après un match terminé.
+// Au lieu d'attendre que de nouveaux matchs se jouent un par un, on va chercher des matchs des
+// derniers jours DÉJÀ TERMINÉS, on calcule les value bets sur leurs cotes (encore accessibles), et on
+// vérifie tout de suite puisque le résultat est déjà connu — ça remplit le tracker ROI d'un coup.
+const SCANNED_KEY='pronosScannedFixtures_v1';
+const BACKFILL_DAYS=6, BACKFILL_BATCH_SIZE=40;
+function loadScannedIds(){ try{ return new Set(JSON.parse(localStorage.getItem(SCANNED_KEY)||'[]')); }catch(e){ return new Set(); } }
+function saveScannedIds(set){ try{ const arr=[...set]; localStorage.setItem(SCANNED_KEY, JSON.stringify(arr.slice(-4000))); }catch(e){ console.warn('[pronos] Sauvegarde des matchs scannés impossible:', e.message); } }
+
+function resolveValueBetNow(fixture, vb){
+  const tracker=loadVBTracker();
+  const key=`${fixture.fixture.id}|${vb.market}|${vb.pick}`;
+  if(tracker.find(t=>t.key===key)) return false;
+  const outcome=resolveBetOutcome(vb.market,vb.pick,fixture.goals.home,fixture.goals.away,fixture.teams.home.name,fixture.teams.away.name);
+  tracker.push({
+    key, fixtureId:fixture.fixture.id,
+    homeName:fixture.teams.home.name, awayName:fixture.teams.away.name,
+    kickoff:fixture.fixture.date,
+    market:vb.market, pick:vb.pick, odd:vb.odd, edge:vb.edge,
+    calibVersion:CALIBRATION_VERSION,
+    resolved:true, won:outcome===null?null:outcome, skipped:outcome===null
+  });
+  if(tracker.length>800) tracker.splice(0, tracker.length-800);
+  saveVBTracker(tracker);
+  return true;
+}
+
+async function runHistoricalBackfill(){
+  const logEl=document.getElementById('backfillLog');
+  logEl.innerHTML='<div class="debug-empty">Recherche de matchs récents terminés...</div>';
+  const scanned=loadScannedIds();
+  let candidates=[];
+  try{
+    for(let d=0; d<BACKFILL_DAYS; d++){
+      const date=new Date(Date.now()-d*24*3600*1000);
+      const dateStr=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,"0")}-${String(date.getDate()).padStart(2,"0")}`;
+      const fixtures=await apiGet(`/fixtures?date=${dateStr}`);
+      (fixtures||[]).forEach(f=>{
+        if(isFinished(f) && f.goals.home!==null && !scanned.has(f.fixture.id)) candidates.push(f);
+      });
+      if(candidates.length>=BACKFILL_BATCH_SIZE*3) break; // assez de matière pour ce lot, pas la peine de tout charger
+    }
+  }catch(e){
+    logEl.innerHTML=`<div class="debug-log-entry err">⚠️ Erreur pendant la recherche : ${e.message}</div>`;
+    return;
+  }
+  const batch=candidates.slice(0,BACKFILL_BATCH_SIZE);
+  logEl.innerHTML=`<div class="debug-empty">Analyse de ${batch.length} match${batch.length>1?'s':''}...</div>`;
+  let valueBetsFound=0, checked=0;
+  for(const fixture of batch){
+    try{
+      const {parsed, valueBets}=await getValueBetsForFixture(fixture);
+      if(parsed && parsed.home1x2){
+        valueBets.forEach(vb=>{ if(resolveValueBetNow(fixture,vb)) valueBetsFound++; });
+      }
+    }catch(e){
+      console.warn(`[pronos] Rattrapage : erreur sur fixture ${fixture.fixture.id} :`, e.message);
+    }
+    scanned.add(fixture.fixture.id);
+    checked++;
+  }
+  saveScannedIds(scanned);
+  logEl.innerHTML=`<div class="debug-log-entry best">Terminé : ${checked} nouveaux matchs vérifiés (+ ${scanned.size-checked} déjà vus, ignorés), ${valueBetsFound} value bet${valueBetsFound>1?'s':''} trouvé${valueBetsFound>1?'s':''} et résolu${valueBetsFound>1?'s':''} immédiatement. Relance "Vérifier les résultats" ci-dessus pour voir le nouveau ROI.</div>`;
+  renderVBTrackerPanel();
+}
+
 function oddsToProb(odds) { return odds > 1 ? 1/odds : 0; }
 function normalizeProbabilities(probs) { const t=probs.reduce((s,p)=>s+p,0); return t===0?probs:probs.map(p=>p/t); }
 // Retire la marge du bookmaker sur une paire Over/Under en normalisant les deux probabilités
@@ -525,6 +595,28 @@ function confidenceBarHTML(v) {
   return `<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><div style="flex:1;height:5px;background:#e8ecf4;border-radius:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div></div><span style="font-size:12px;font-weight:800;color:${color};min-width:36px;text-align:right">${pct}%</span></div>`;
 }
 
+// Calcule le modèle et détecte les value bets pour un match donné, à partir des cotes 1xBet.
+// Factorisé pour être utilisé aussi bien par l'analyse en direct (showPredictions) que par le
+// Rattrapage historique, afin de ne jamais faire diverger la logique entre les deux.
+async function getValueBetsForFixture(fixture) {
+  const home=fixture.teams.home, away=fixture.teams.away;
+  let oddsData=null;
+  try{ oddsData=await apiGet(`/odds?fixture=${fixture.fixture.id}&bookmaker=${BOOKMAKER_1XBET}`); }catch(e){}
+  const parsed=parseOdds1xbet(oddsData,home.name,away.name);
+  if(!parsed||!parsed.home1x2) return {parsed:null, modelProbs:null, valueBets:[]};
+  const rawH=oddsToProb(parsed.home1x2),rawD=oddsToProb(parsed.draw1x2||2),rawA=oddsToProb(parsed.away1x2);
+  const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
+  const {lh,la}=estimateLambdas(nH,nD,nA);
+  let modelProbs=computeModelProbabilities(lh,la);
+  const overTargets=buildOverTargets(parsed);
+  if(overTargets.length){
+    const {lh:ouLh,la:ouLa}=estimateLambdas(nH,nD,nA,overTargets);
+    modelProbs=withJointOUProbs(modelProbs,ouLh,ouLa);
+  }
+  const valueBets=findValueBets(modelProbs,parsed,home.name,away.name);
+  return {parsed, modelProbs, valueBets};
+}
+
 async function showPredictions(fixture,container,btn) {
   const live=isLive(fixture);
   if(!live&&container.dataset.loaded==="true"){container.style.display=container.style.display==="none"?"block":"none";btn.textContent=container.style.display==="none"?"👁 Analyser":"🙈 Masquer";return;}
@@ -550,22 +642,10 @@ async function showPredictions(fixture,container,btn) {
       html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${pO25>=0.5?'Plus de 2.5 buts':'Moins de 2.5 buts'}</div>${confidenceBarHTML(pO25>=0.5?pO25:1-pO25)}</div>`;
     } else {
       html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
-      let oddsData=null;
-      try{oddsData=await apiGet(`/odds?fixture=${fixture.fixture.id}&bookmaker=${BOOKMAKER_1XBET}`);}catch(e){}
-      const parsed=parseOdds1xbet(oddsData,home.name,away.name);
+      const {parsed, modelProbs, valueBets}=await getValueBetsForFixture(fixture);
       if(!parsed||!parsed.home1x2){
         html+=`<div class="no-odds">⚠️ Cotes 1xBet non disponibles pour ce match.</div>`;
       } else {
-        const rawH=oddsToProb(parsed.home1x2),rawD=oddsToProb(parsed.draw1x2||2),rawA=oddsToProb(parsed.away1x2);
-        const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
-        const {lh,la}=estimateLambdas(nH,nD,nA);
-        let modelProbs=computeModelProbabilities(lh,la);
-        const overTargets=buildOverTargets(parsed);
-        if(overTargets.length){
-          const {lh:ouLh,la:ouLa}=estimateLambdas(nH,nD,nA,overTargets);
-          modelProbs=withJointOUProbs(modelProbs,ouLh,ouLa);
-        }
-        const valueBets=findValueBets(modelProbs,parsed,home.name,away.name);
         valueBets.forEach(vb=>recordValueBet(fixture,vb));
         if(valueBets.length===0){
           html+=`<div class="no-odds">✅ Aucun value bet détecté.<br>Les cotes semblent correctement évaluées.</div>`;
