@@ -568,7 +568,17 @@ function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
   function checkValue(market,pick,modelProb,odd1xbet){
     if(!odd1xbet||odd1xbet<=1)return;
     const impliedProb=oddsToProb(odd1xbet), edge=modelProb-impliedProb;
-    if(edge>0.03) valueBets.push({market,pick,modelProb:Math.round(modelProb*100),impliedProb:Math.round(impliedProb*100),odd:odd1xbet,edge:Math.round(edge*100)});
+    if(edge>0.03){
+      // EV : gain moyen attendu par unité misée, selon le modèle. Ex: EV=0.15 veut dire que pour
+      // chaque unité misée, on s'attend à gagner 0.15 unité en moyenne SI le modèle a raison.
+      const ev=modelProb*odd1xbet-1;
+      // Kelly plein (fraction du capital à miser en théorie) est souvent trop agressif en pratique
+      // (sensible à la moindre erreur de modèle) — on affiche le quart de Kelly, un compromis standard
+      // pour limiter la casse si le modèle se trompe, plafonné à 5% du capital par pari par prudence.
+      const kellyFull=(modelProb*odd1xbet-1)/(odd1xbet-1);
+      const kellyQuarter=Math.max(0,Math.min(0.05,kellyFull*0.25));
+      valueBets.push({market,pick,modelProb:Math.round(modelProb*100),impliedProb:Math.round(impliedProb*100),odd:odd1xbet,edge:Math.round(edge*100),ev:Math.round(ev*100)/100,kellyQuarter:Math.round(kellyQuarter*1000)/10});
+    }
   }
   const o=odds1xbet;
   if(o.home1x2)checkValue('Résultat (1X2)',`Victoire ${homeName}`,modelProbs.pH,o.home1x2);
@@ -630,7 +640,7 @@ function renderValueBet(vb) {
   if(vb.edge>=10){cls='value-high';badgeCls='high';label=`🔥 +${vb.edge}%`;}
   else if(vb.edge>=6){cls='value-mid';badgeCls='mid';label=`⚡ +${vb.edge}%`;}
   else{cls='value-low';badgeCls='low';label=`+${vb.edge}%`;}
-  return `<div class="value-item ${cls}"><div class="value-market">${vb.market}</div><div class="value-pick">${vb.pick}</div><div class="value-row"><div class="value-odds">Cote: <b>${vb.odd}</b> · Implicite: <b>${vb.impliedProb}%</b> · Modèle: <b>${vb.modelProb}%</b></div><span class="value-badge ${badgeCls}">${label}</span></div></div>`;
+  return `<div class="value-item ${cls}"><div class="value-market">${vb.market}</div><div class="value-pick">${vb.pick}</div><div class="value-row"><div class="value-odds">Cote: <b>${vb.odd}</b> · Implicite: <b>${vb.impliedProb}%</b> · Modèle: <b>${vb.modelProb}%</b></div><span class="value-badge ${badgeCls}">${label}</span></div><div class="value-odds" style="margin-top:4px;">EV: <b>${vb.ev>=0?'+':''}${vb.ev}</b>/unité · Mise suggérée (¼ Kelly): <b>${vb.kellyQuarter}%</b> du capital</div></div>`;
 }
 
 function confidenceBarHTML(v) {
@@ -880,6 +890,11 @@ async function showPredictions(fixture,container,btn) {
           source='cotes 1xBet';
         }
       }catch(e){}
+      // Explicabilité simplifiée : liste des facteurs qui ont concrètement influencé le calcul,
+      // avec un sens (📈/📉) et une ampleur approximative — pas un vrai calcul de type SHAP (ça
+      // demanderait un modèle de Machine Learning qu'on n'a pas), juste une trace transparente des
+      // ajustements réellement appliqués au-dessus de la base cotes/forme.
+      const factors=[];
       if(baseLh===undefined){
         try{
           const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id,fixture.fixture.date),getTeamForm(away.id,fixture.fixture.date)]);
@@ -887,8 +902,8 @@ async function showPredictions(fixture,container,btn) {
           baseLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
           // Effet fatigue conservateur et plafonné : l'ampleur exacte est débattue dans la littérature,
           // donc on limite volontairement l'impact à -8% max plutôt que de deviner un poids agressif.
-          if(homeForm.restDays!==null && homeForm.restDays<3) baseLh*=0.92;
-          if(awayForm.restDays!==null && awayForm.restDays<3) baseLa*=0.92;
+          if(homeForm.restDays!==null && homeForm.restDays<3){ baseLh*=0.92; factors.push({label:`${home.name} : moins de 3 jours de repos`, dir:'📉'}); }
+          if(awayForm.restDays!==null && awayForm.restDays<3){ baseLa*=0.92; factors.push({label:`${away.name} : moins de 3 jours de repos`, dir:'📉'}); }
           source='forme récente';
         }catch(e){ console.warn(`[pronos] Forme indisponible pour fixture ${fixture.fixture.id}, repli sur moyenne générique :`, e.message); }
       }
@@ -900,9 +915,13 @@ async function showPredictions(fixture,container,btn) {
         const hRed=ls.hRed||0, aRed=ls.aRed||0;
         baseLh *= Math.pow(0.65, hRed) * Math.pow(1.12, aRed);
         baseLa *= Math.pow(0.65, aRed) * Math.pow(1.12, hRed);
+        if(hRed>0) factors.push({label:`${home.name} : ${hRed} carton${hRed>1?'s':''} rouge${hRed>1?'s':''}`, dir:'📉'});
+        if(aRed>0) factors.push({label:`${away.name} : ${aRed} carton${aRed>1?'s':''} rouge${aRed>1?'s':''}`, dir:'📉'});
       }
+      if(Math.abs(dom)>0.05) factors.push({label:`${dom>0?home.name:away.name} plus dangereux (tirs cadrés/corners)`, dir:'📈'});
       const {pH,pD,pA,pBTTS,pWTNH,pWTNA,totalDist}=computeLiveProbabilities(baseLh,baseLa,hG,aG,remaining,dom);
       html+=`<div style="font-size:10px;color:#8a9ab8;margin-bottom:6px;">Basé sur : ${source}, projeté sur ${remaining} min restantes</div>`;
+      if(factors.length) html+=`<div style="font-size:10px;color:#4a6090;margin-bottom:8px;">${factors.map(f=>`${f.dir} ${f.label}`).join('<br>')}</div>`;
       html+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin-bottom:6px;">📊 Probabilités en temps réel</div>`;
       [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}].sort((a,b)=>b.p-a.p).forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
       const tG=hG+aG;
@@ -934,6 +953,11 @@ async function showPredictions(fixture,container,btn) {
         html+=`<div class="no-odds">⚠️ Cotes 1xBet non disponibles pour ce match.</div>`;
       } else {
         valueBets.forEach(vb=>recordValueBet(fixture,vb));
+        // Indice de confiance (0-100) : base solide car des cotes réelles sont disponibles, ajustée
+        // selon l'accord entre le modèle cotes et le modèle forme récente (deux sources indépendantes
+        // qui se recoupent = plus de confiance). Formule volontairement simple et transparente,
+        // pas un vrai calcul statistique de confiance — à prendre comme un indicateur, pas une preuve.
+        let confidenceScore=70;
         try{
           const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id,fixture.fixture.date),getTeamForm(away.id,fixture.fixture.date)]);
           const formLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
@@ -941,7 +965,12 @@ async function showPredictions(fixture,container,btn) {
           let h2h=null;
           try{ h2h=await getH2HRecord(home.id, away.id); }catch(e){}
           recordPrediction(fixture, lh, la, formLh, formLa, h2h);
+          const formProbs=computeModelProbabilities(formLh, formLa);
+          const disagreement=Math.abs(modelProbs.pH-formProbs.pH)+Math.abs(modelProbs.pD-formProbs.pD)+Math.abs(modelProbs.pA-formProbs.pA);
+          const agreementBonus=Math.max(0,Math.round(25*(1-disagreement/0.6)));
+          confidenceScore=Math.min(95,70+agreementBonus);
         }catch(e){ console.warn(`[pronos] Forme récente indisponible pour fixture ${fixture.fixture.id} :`, e.message); }
+        html+=`<div style="font-size:11px;font-weight:700;color:${confidenceScore>=80?'#1a6b3a':confidenceScore>=65?'#b08900':'#9b2c2c'};margin-bottom:8px;">Indice de confiance : ${confidenceScore}/100</div>`;
         if(valueBets.length===0){
           html+=`<div class="no-odds">✅ Aucun value bet détecté.<br>Les cotes semblent correctement évaluées.</div>`;
         } else {
