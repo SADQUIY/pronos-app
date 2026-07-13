@@ -218,7 +218,7 @@ const VB_TRACKER_KEY='pronosValueBetTracker_v1';
 // Identifiant de la méthode de calibration en vigueur. À incrémenter à chaque changement de
 // calibration qui modifie les probabilités du modèle, pour pouvoir comparer le ROI par version dans
 // le tracker sans que les anciens paris (autre méthode) diluent silencieusement le résultat.
-const CALIBRATION_VERSION='v2_joint_ou';
+const CALIBRATION_VERSION='v3_joint_ou_btts';
 function loadVBTracker(){ try{ return JSON.parse(localStorage.getItem(VB_TRACKER_KEY)||'[]'); }catch(e){ return []; } }
 function saveVBTracker(arr){ try{ localStorage.setItem(VB_TRACKER_KEY, JSON.stringify(arr)); }catch(e){ console.warn('[pronos] Sauvegarde du suivi value bets impossible:', e.message); } }
 function getCalibVersion(rec){ return rec.calibVersion || 'v1_1x2_only'; }
@@ -490,13 +490,23 @@ function buildOverTargets(parsed) {
   return overTargets;
 }
 
-// Remplace uniquement les probabilités de "Total buts" (Over/Under) par celles issues du fit JOINT
-// 1X2+O/U, en gardant tout le reste de modelProbs (1X2, BTTS, Score exact, etc.) calculé avec le fit
+// Remplace par le fit JOINT 1X2+O/U toutes les probabilités qui dépendent du nombre de buts marqués
+// par chaque équipe séparément (pas seulement du résultat 1X2) : Total buts, BTTS, 0-0, match nul
+// avec buts, "équipe marque N buts", gagne sans encaisser. Le 1X2 pur, lui, reste calculé avec le fit
 // 1X2 pur. Un seul (lh,la) alimente toute la grille de scores, donc sans cette séparation, calibrer
 // aussi sur l'Over/Under distordrait légèrement le 1X2 lui-même (constaté sur le tracker Brier).
+// NOTE : ce même bug (calibrer uniquement sur le 1X2 puis réutiliser pour des marchés qui dépendent
+// du nombre de buts) avait déjà été diagnostiqué et corrigé pour "Total buts" — BTTS et les marchés
+// listés ci-dessus partagent exactement la même dépendance et avaient été oubliés lors du premier fix.
 function withJointOUProbs(modelProbs, ouLh, ouLa) {
   const ouProbs=computeModelProbabilities(ouLh, ouLa);
-  return {...modelProbs, pO05:ouProbs.pO05, pO15:ouProbs.pO15, pO25:ouProbs.pO25, pO35:ouProbs.pO35};
+  return {...modelProbs,
+    pO05:ouProbs.pO05, pO15:ouProbs.pO15, pO25:ouProbs.pO25, pO35:ouProbs.pO35,
+    pBTTS:ouProbs.pBTTS, pNilNil:ouProbs.pNilNil, pSD:ouProbs.pSD,
+    pHScore05:ouProbs.pHScore05, pHScore15:ouProbs.pHScore15,
+    pAScore05:ouProbs.pAScore05, pAScore15:ouProbs.pAScore15,
+    pWTNH:ouProbs.pWTNH, pWTNA:ouProbs.pWTNA, pWTNAny:ouProbs.pWTNAny
+  };
 }
 
 function computeModelProbabilities(lh, la) {
