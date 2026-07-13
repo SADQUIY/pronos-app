@@ -104,6 +104,7 @@
     <button class="tab-btn" id="tabDone" onclick="switchTab('done')">TERMINÉS</button>
   </div>
 </div>
+<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-13-live-diag</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
@@ -968,8 +969,14 @@ async function showPredictions(fixture,container,btn) {
           const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
           ({lh:baseLh,la:baseLa}=estimateLambdas(nH,nD,nA));
           source='cotes 1xBet';
+        } else {
+          // Diagnostic : distingue "l'API n'a renvoyé aucune cote 1xBet pour ce match" (cas normal,
+          // fréquent en direct) d'une vraie erreur technique — avant, les deux cas étaient invisibles.
+          console.warn(`[pronos] Pas de cotes 1xBet en direct pour ${home.name} vs ${away.name} (fixture ${fixture.fixture.id}) : ${oddsData&&oddsData.length?`réponse reçue mais aucun marché 1X2 exploitable (bookmaker ${BOOKMAKER_1XBET} absent de la réponse ou format inattendu)`:'réponse vide de l\'API pour ce bookmaker sur ce match'}. Repli sur la forme récente.`);
         }
-      }catch(e){}
+      }catch(e){
+        console.warn(`[pronos] Échec technique de récupération des cotes en direct pour ${home.name} vs ${away.name} (fixture ${fixture.fixture.id}) :`, e.message);
+      }
       // Explicabilité simplifiée : liste des facteurs qui ont concrètement influencé le calcul,
       // avec un sens (📈/📉) et une ampleur approximative — pas un vrai calcul de type SHAP (ça
       // demanderait un modèle de Machine Learning qu'on n'a pas), juste une trace transparente des
@@ -1027,7 +1034,11 @@ async function showPredictions(fixture,container,btn) {
       // requête, donc l'attribution est fiable — contrairement à l'ancien endpoint générique "cotes
       // live" écarté au tout début du projet pour manque d'attribution). Non suivi par le tracker ROI
       // (qui ne couvre que l'avant-match) : à prendre avec prudence supplémentaire, voir l'avertissement.
-      if(liveParsed){
+      // On désactive carrément l'affichage dans les 10 dernières minutes : confirmé en conditions
+      // réelles (match 3-0 avec expulsion à la 89e) que 1xBet retire purement et simplement un marché
+      // devenu quasi certain plutôt que de le geler — la cote qu'on récupère alors n'existe plus du
+      // tout côté bookmaker, donc l'edge affiché serait entièrement fictif.
+      if(liveParsed && remaining>10){
         const liveModelProbs={pH,pD,pA,pBTTS,pWTNH,pWTNA};
         const liveValueBets=findValueBets(liveModelProbs,liveParsed,home.name,away.name);
         if(liveValueBets.length>0){
@@ -1035,6 +1046,8 @@ async function showPredictions(fixture,container,btn) {
           html+=`<div style="font-size:10px;color:#b08900;margin-bottom:8px;">⚠️ Pas suivi par le tracker ROI, et la cote peut être figée depuis l'avant-match plutôt que réellement mise à jour en direct — à vérifier toi-même sur 1xBet avant d'agir.</div>`;
           html+=liveValueBets.map(renderValueBet).join("");
         }
+      } else if(liveParsed && remaining<=10){
+        html+=`<div style="font-size:10px;color:#8a9ab8;margin:10px 0 4px;">Analyse de value bet désactivée dans les 10 dernières minutes : 1xBet retire souvent les marchés devenus quasi certains, la cote récupérée risque de ne plus exister réellement.</div>`;
       }
       try{
         const ctx=await getMatchContext(fixture);
