@@ -484,8 +484,13 @@ function estimateLambdas(pH, pD, pA, overTargets) {
 // Construit la liste overTargets à partir des cotes Over/Under 1xBet parsées, pour un match donné.
 function buildOverTargets(parsed) {
   const overTargets=[];
+  // Une cote <= 1 (ex: exactement 1.00) n'existe jamais chez un vrai bookmaker (ça impliquerait une
+  // marge négative) — c'est presque toujours une valeur factice/erreur de l'API. La traiter comme
+  // "0% de chances" (ce que ferait oddsToProb telle quelle) produirait une cible absurde qui
+  // contaminerait tout le fit joint pour les 3 autres lignes de totaux. On exclut donc la ligne
+  // entière plutôt que d'utiliser une donnée invalide.
   [[0.5,'over05','under05'],[1.5,'over15','under15'],[2.5,'over25','under25'],[3.5,'over35','under35']].forEach(([line,ok,uk])=>{
-    if(parsed[ok]) overTargets.push({line, p: pairImpliedProb(parsed[ok], parsed[uk])});
+    if(parsed[ok]>1 && (!parsed[uk] || parsed[uk]>1)) overTargets.push({line, p: pairImpliedProb(parsed[ok], parsed[uk])});
   });
   return overTargets;
 }
