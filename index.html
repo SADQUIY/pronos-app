@@ -853,9 +853,11 @@ function renderVBHighlightSection(){
   el.innerHTML=`<div style="font-size:12px;font-weight:800;color:#1a3a6b;margin:4px 0 8px;">🎯 Value bets trouvés (${found.length})</div>`+
     found.map(({fixture,topBet})=>{
       const home=fixture.teams.home.name, away=fixture.teams.away.name;
+      const leagueLabel=`${countryFlag(fixture.league.country)} ${formatLeagueName(fixture.league.name,fixture.league.country)}`;
       const badgeCls=topBet.edge>=10?'high':topBet.edge>=6?'mid':'low';
       const badgeIcon=topBet.edge>=10?'🔥':topBet.edge>=6?'⚡':'';
       return `<div class="league-group"><div class="card" style="cursor:pointer;" onclick="document.getElementById('fixtureCard_${fixture.fixture.id}')?.scrollIntoView({behavior:'smooth',block:'center'})">`+
+        `<div style="font-size:10px;font-weight:700;color:#1a3a6b;margin-bottom:2px;">${leagueLabel}</div>`+
         `<div style="font-size:11px;color:#8a9ab8;margin-bottom:4px;">${home} vs ${away}</div>`+
         `<div style="font-size:13px;font-weight:800;margin-bottom:4px;">${topBet.market} : ${topBet.pick}</div>`+
         `<div class="value-row"><div class="value-odds">Cote: <b>${topBet.odd}</b> · Modèle: <b>${topBet.modelProb}%</b></div><span class="value-badge ${badgeCls}">${badgeIcon} +${topBet.edge}%</span></div>`+
