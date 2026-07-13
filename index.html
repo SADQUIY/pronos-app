@@ -809,6 +809,10 @@ async function getValueBetsForFixture(fixture) {
   if(overTargets.length){
     const {lh:ouLh,la:ouLa}=estimateLambdas(nH,nD,nA,overTargets);
     modelProbs=withJointOUProbs(modelProbs,ouLh,ouLa);
+    // Diagnostic temporaire : permet de vérifier, sur un match précis, si les cotes Over/Under brutes
+    // et la cible implicite (sans marge) qu'on a fournies au fit joint correspondent bien à ce que
+    // 1xBet affiche réellement — utile pour enquêter sur un edge Total buts anormalement élevé.
+    console.warn(`[pronos] Diag Over/Under ${home.name} vs ${away.name} : cibles=[${overTargets.map(t=>`O${t.line}=${(t.p*100).toFixed(0)}%`).join(', ')}] → modèle=[O0.5=${(modelProbs.pO05*100).toFixed(0)}%, O1.5=${(modelProbs.pO15*100).toFixed(0)}%, O2.5=${(modelProbs.pO25*100).toFixed(0)}%, O3.5=${(modelProbs.pO35*100).toFixed(0)}%] cotes brutes=[${['over05','under05','over15','under15','over25','under25','over35','under35'].map(k=>`${k}=${parsed[k]||'?'}`).join(', ')}]`);
   }
   const valueBets=findValueBets(modelProbs,parsed,home.name,away.name);
   return {parsed, modelProbs, valueBets, lh, la};
