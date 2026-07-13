@@ -977,8 +977,19 @@ async function showPredictions(fixture,container,btn) {
         if(valueBets.length===0){
           html+=`<div class="no-odds">✅ Aucun value bet détecté.<br>Les cotes semblent correctement évaluées.</div>`;
         } else {
-          html+=`<div style="font-size:11px;color:#8a9ab8;margin-bottom:10px;">${valueBets.length} opportunité${valueBets.length>1?'s':''} · Trié par avantage</div>`;
-          html+=valueBets.map(renderValueBet).join("");
+          const [topBet, ...restBets]=valueBets;
+          html+=`<div style="background:#1a3a6b;border-radius:12px;padding:16px;margin-bottom:12px;color:#fff;">`+
+            `<div style="font-size:12px;font-weight:800;letter-spacing:0.5px;margin-bottom:8px;">🏆 MEILLEUR PARI RECOMMANDÉ</div>`+
+            `<div style="font-size:10px;color:#a8c4e0;text-transform:uppercase;letter-spacing:0.3px;margin-bottom:4px;">${topBet.market}</div>`+
+            `<div style="font-size:20px;font-weight:800;margin-bottom:8px;">${topBet.pick}</div>`+
+            `<div style="font-size:13px;color:#d8e4f4;margin-bottom:4px;">Cote: <b style="color:#fff;">${topBet.odd}</b> · Modèle: <b style="color:#fff;">${topBet.modelProb}%</b> · Implicite: <b style="color:#fff;">${topBet.impliedProb}%</b></div>`+
+            `<div style="font-size:12px;color:#d8e4f4;margin-bottom:10px;">EV: <b style="color:#fff;">${topBet.ev>=0?'+':''}${topBet.ev}</b>/unité · ¼ Kelly: <b style="color:#fff;">${topBet.kellyQuarter}%</b></div>`+
+            `<span style="display:inline-block;background:rgba(255,255,255,0.18);border-radius:20px;padding:4px 12px;font-size:13px;font-weight:800;">${topBet.edge>=10?'🔥':'⚡'} +${topBet.edge}%</span>`+
+            `</div>`;
+          if(restBets.length){
+            html+=`<div style="font-size:11px;color:#8a9ab8;margin-bottom:10px;">${restBets.length} autre${restBets.length>1?'s':''} opportunité${restBets.length>1?'s':''} · Trié par avantage</div>`;
+            html+=restBets.map(renderValueBet).join("");
+          }
         }
         html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:12px 0 6px;padding-top:10px;border-top:1px dashed #e0e4ee;text-transform:uppercase;letter-spacing:0.5px;">Probabilités du modèle</div>`;
         [{label:`Victoire ${home.name}`,p:modelProbs.pH},{label:'Match nul',p:modelProbs.pD},{label:`Victoire ${away.name}`,p:modelProbs.pA},{label:'BTTS Oui',p:modelProbs.pBTTS},{label:'Over 2.5',p:modelProbs.pO25}].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
