@@ -108,6 +108,8 @@
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
   <button id="refreshBtn" class="refresh-btn" style="display:none" onclick="loadFixtures()">🔄 Rafraîchir</button>
+  <button id="scanVBBtn" class="refresh-btn" style="display:none" onclick="scanUpcomingForValueBets()">🔍 Scanner les value bets (avant-match)</button>
+  <div id="vbHighlightSection"></div>
   <div id="matchList"></div>
   <div id="footerNote"></div>
 </div>
@@ -144,6 +146,9 @@
 const API_BASE = "https://Sadquiy35--2a7ef21a6f6f11f1a7161607ee4eb77e.web.val.run";
 const BOOKMAKER_1XBET = 8;
 let allFixtures = [], currentTab = "upcoming";
+// Résultats du scan manuel "🔍 Scanner les value bets" : uniquement en mémoire (pas persistant),
+// réinitialisé à chaque rechargement de page. clé = fixture.id, valeur = {fixture, topBet}.
+let scannedValueBets = new Map();
 
 function todayISO() {
   const d = new Date();
@@ -799,6 +804,56 @@ async function getValueBetsForFixture(fixture) {
   return {parsed, modelProbs, valueBets, lh, la};
 }
 
+// Scanne à la demande un lot borné de matchs avant-match (pas tous, pour rester rapide et stable) et
+// fait remonter dans une section dédiée en haut ceux où un value bet a été trouvé. Résultats gardés
+// en mémoire seulement (pas persistants), pour laisser l'utilisateur identifier facilement les
+// opportunités du jour sans avoir à cliquer "Analyser" sur chaque match un par un.
+const VB_SCAN_BATCH_SIZE=25;
+async function scanUpcomingForValueBets(){
+  const btn=document.getElementById('scanVBBtn');
+  const upcoming=allFixtures.filter(f=>isUpcoming(f) && !scannedValueBets.has(f.fixture.id));
+  const batch=upcoming.slice(0,VB_SCAN_BATCH_SIZE);
+  if(batch.length===0){ btn.textContent='🔍 Tous les matchs affichés sont déjà scannés'; return; }
+  btn.disabled=true;
+  let found=0;
+  for(let i=0;i<batch.length;i++){
+    const fixture=batch[i];
+    btn.textContent=`🔍 Scan en cours... (${i+1}/${batch.length})`;
+    try{
+      const {parsed, valueBets}=await getValueBetsForFixture(fixture);
+      if(parsed && valueBets.length>0){
+        scannedValueBets.set(fixture.fixture.id, {fixture, topBet:valueBets[0]});
+        found++;
+      } else {
+        scannedValueBets.set(fixture.fixture.id, null); // marqué comme scanné, rien trouvé
+      }
+    }catch(e){ console.warn(`[pronos] Scan value bet échoué pour fixture ${fixture.fixture.id} :`, e.message); }
+  }
+  btn.disabled=false;
+  const remaining=allFixtures.filter(f=>isUpcoming(f) && !scannedValueBets.has(f.fixture.id)).length;
+  btn.textContent=remaining>0?`🔍 Scanner plus de value bets (${remaining} restants)`:'🔍 Tous les matchs affichés sont déjà scannés';
+  renderVBHighlightSection();
+}
+function renderVBHighlightSection(){
+  const el=document.getElementById('vbHighlightSection');
+  if(!el) return;
+  if(currentTab!=="upcoming"){ el.innerHTML=""; return; }
+  const found=[...scannedValueBets.values()].filter(Boolean).sort((a,b)=>b.topBet.edge-a.topBet.edge);
+  if(found.length===0){ el.innerHTML=""; return; }
+  el.innerHTML=`<div style="font-size:12px;font-weight:800;color:#1a3a6b;margin:4px 0 8px;">🎯 Value bets trouvés (${found.length})</div>`+
+    found.map(({fixture,topBet})=>{
+      const home=fixture.teams.home.name, away=fixture.teams.away.name;
+      const badgeCls=topBet.edge>=10?'high':topBet.edge>=6?'mid':'low';
+      const badgeIcon=topBet.edge>=10?'🔥':topBet.edge>=6?'⚡':'';
+      return `<div class="league-group"><div class="card" style="cursor:pointer;" onclick="document.getElementById('fixtureCard_${fixture.fixture.id}')?.scrollIntoView({behavior:'smooth',block:'center'})">`+
+        `<div style="font-size:11px;color:#8a9ab8;margin-bottom:4px;">${home} vs ${away}</div>`+
+        `<div style="font-size:13px;font-weight:800;margin-bottom:4px;">${topBet.market} : ${topBet.pick}</div>`+
+        `<div class="value-row"><div class="value-odds">Cote: <b>${topBet.odd}</b> · Modèle: <b>${topBet.modelProb}%</b></div><span class="value-badge ${badgeCls}">${badgeIcon} +${topBet.edge}%</span></div>`+
+        `</div></div>`;
+    }).join("")+
+    `<div style="font-size:10px;color:#b0b8c8;margin:6px 0 14px;">Touche une carte pour aller directement au match dans la liste ci-dessous.</div>`;
+}
+
 // Contexte additionnel (historique face-à-face, blessures, compositions, enjeu). Contrairement aux
 // cartons rouges (effet numérique validé), ces facteurs ne sont PAS injectés dans le calcul de
 // probabilité : on n'a aucune donnée pour calibrer correctement leur poids, et un mauvais dosage
@@ -1019,7 +1074,7 @@ function renderMatch(fixture) {
   else if(isFinished(fixture)){const sc=fixture.goals.home!==null?`${fixture.goals.home}-${fixture.goals.away}`:"FT";tb=`<span class="badge-done">✅ ${sc}</span>`;}
   else tb=`<span class="time-badge">${timeStr}</span>`;
   const ss=(isLive(fixture)||isFinished(fixture))&&fixture.goals.home!==null;
-  const card=document.createElement("div");card.className="card";
+  const card=document.createElement("div");card.className="card";card.id=`fixtureCard_${fixture.fixture.id}`;
   card.innerHTML=`<div class="card-top"><span class="card-round">${fixture.league.round||""}</span>${tb}</div><div class="teams-row"><div class="team-block"><img src="${home.logo}" onerror="this.style.display='none'" style="width:20px;height:20px;object-fit:contain;flex-shrink:0" alt=""/><span class="team-name">${home.name}</span></div><div class="score-block">${ss?`<span class="score">${fixture.goals.home}</span><span class="score-sep">-</span><span class="score">${fixture.goals.away}</span>`:`<span class="vs-text">VS</span>`}</div><div class="team-block away"><img src="${away.logo}" onerror="this.style.display='none'" style="width:20px;height:20px;object-fit:contain;flex-shrink:0" alt=""/><span class="team-name">${away.name}</span></div></div><button class="pred-btn${isLive(fixture)?" live-btn":""}">👁 Analyser</button><div class="predictions" style="display:none"></div>`;
   const btn=card.querySelector(".pred-btn"),pc=card.querySelector(".predictions");
   btn.addEventListener("click",()=>showPredictions(fixture,pc,btn));
@@ -1063,6 +1118,9 @@ function switchTab(tab) {
   document.getElementById("tabLive").innerHTML=`<span class="live-dot"></span>EN DIRECT${lc>0?` (${lc})`:""}`;
   document.getElementById("tabUpcoming").textContent=`AVANT-MATCH (${allFixtures.filter(f=>isUpcoming(f)).length})`;
   document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)).length})`;
+  const scanBtn=document.getElementById("scanVBBtn");
+  scanBtn.style.display=tab==="upcoming"?"flex":"none";
+  renderVBHighlightSection();
 }
 
 async function loadFixtures(silent=false) {
