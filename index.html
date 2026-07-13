@@ -958,11 +958,12 @@ async function showPredictions(fixture,container,btn) {
       // On réutilise le VRAI modèle calibré (cotes si dispo, sinon forme récente) au lieu d'une
       // formule à paliers fixes — sans ça, deux matchs à score/minute identiques donnaient toujours
       // exactement la même prédiction, peu importe la force réelle des équipes.
-      let baseLh, baseLa, source;
+      let baseLh, baseLa, source, liveParsed=null;
       try{
         const oddsData=await apiGet(`/odds?fixture=${fixture.fixture.id}&bookmaker=${BOOKMAKER_1XBET}`);
         const parsed=parseOdds1xbet(oddsData,home.name,away.name);
         if(parsed && parsed.home1x2){
+          liveParsed=parsed;
           const rawH=oddsToProb(parsed.home1x2),rawD=oddsToProb(parsed.draw1x2||2),rawA=oddsToProb(parsed.away1x2);
           const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
           ({lh:baseLh,la:baseLa}=estimateLambdas(nH,nD,nA));
@@ -1021,6 +1022,20 @@ async function showPredictions(fixture,container,btn) {
         ...(hG===0?[{label:`${away.name} gagne sans encaisser`, p:pWTNA}]:[]),
         ...(aG===0?[{label:`${home.name} gagne sans encaisser`, p:pWTNH}]:[])
       ].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+      // Détection de value bets EN DIRECT : réutilise le même mécanisme que l'avant-match (findValueBets),
+      // sur les mêmes cotes 1xBet déjà récupérées ci-dessus (bookmaker=8 explicitement filtré dans la
+      // requête, donc l'attribution est fiable — contrairement à l'ancien endpoint générique "cotes
+      // live" écarté au tout début du projet pour manque d'attribution). Non suivi par le tracker ROI
+      // (qui ne couvre que l'avant-match) : à prendre avec prudence supplémentaire, voir l'avertissement.
+      if(liveParsed){
+        const liveModelProbs={pH,pD,pA,pBTTS,pWTNH,pWTNA};
+        const liveValueBets=findValueBets(liveModelProbs,liveParsed,home.name,away.name);
+        if(liveValueBets.length>0){
+          html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:10px 0 4px;text-transform:uppercase;letter-spacing:0.5px;">🎯 Value bets vs 1xBet (en direct)</div>`;
+          html+=`<div style="font-size:10px;color:#b08900;margin-bottom:8px;">⚠️ Pas suivi par le tracker ROI, et la cote peut être figée depuis l'avant-match plutôt que réellement mise à jour en direct — à vérifier toi-même sur 1xBet avant d'agir.</div>`;
+          html+=liveValueBets.map(renderValueBet).join("");
+        }
+      }
       try{
         const ctx=await getMatchContext(fixture);
         html+=renderMatchContext(ctx,home.name,away.name);
