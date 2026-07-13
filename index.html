@@ -1057,7 +1057,17 @@ async function showPredictions(fixture,container,btn) {
       html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
       const {parsed, modelProbs, valueBets, lh, la}=await getValueBetsForFixture(fixture);
       if(!parsed||!parsed.home1x2){
-        html+=`<div class="no-odds">⚠️ Cotes 1xBet non disponibles pour ce match.</div>`;
+        try{
+          const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id,fixture.fixture.date),getTeamForm(away.id,fixture.fixture.date)]);
+          const formLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
+          const formLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
+          const formProbs=computeModelProbabilities(formLh,formLa);
+          html+=`<div class="no-odds">⚠️ Cotes 1xBet indisponibles pour ce match ; estimation basée sur les derniers matchs de chaque équipe (pas de comparaison à une cote possible, donc aucun value bet ne peut être calculé ici).</div>`;
+          html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:12px 0 6px;text-transform:uppercase;letter-spacing:0.5px;">Estimation (forme récente)</div>`;
+          [{label:`Victoire ${home.name}`,p:formProbs.pH},{label:'Match nul',p:formProbs.pD},{label:`Victoire ${away.name}`,p:formProbs.pA},{label:'BTTS Oui',p:formProbs.pBTTS},{label:'Over 2.5',p:formProbs.pO25}].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+        }catch(e){
+          html+=`<div class="no-odds">⚠️ Cotes 1xBet non disponibles pour ce match, et la forme récente n'a pas pu être calculée non plus (probablement trop peu de matchs récents connus pour ces équipes — fréquent sur les amicaux).</div>`;
+        }
       } else {
         valueBets.forEach(vb=>recordValueBet(fixture,vb));
         // Indice de confiance (0-100) : base solide car des cotes réelles sont disponibles, ajustée
