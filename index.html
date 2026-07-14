@@ -104,7 +104,7 @@
     <button class="tab-btn" id="tabDone" onclick="switchTab('done')">TERMINÉS</button>
   </div>
 </div>
-<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-13-live-diag</div>
+<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-14-more-markets</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
@@ -266,7 +266,14 @@ function resolveBetOutcome(market, pick, hG, aG, homeName, awayName){
   if(market===`${awayName} gagne sans encaisser`) return pick==='Oui' ? (aG>hG&&hG===0) : null;
   if(market==='Match nul avec buts') return pick==='Oui' ? (hG===aG&&hG>0) : null;
   if(market==='0-0') return pick==='Oui' ? (hG===0&&aG===0) : null;
-  return null; // marché non couvert (HT-FT, mi-temps, etc.) : on ne sait pas vérifier automatiquement ici
+  if(market===`${homeName} garde sa cage inviolée`) return pick==='Oui' ? aG===0 : null;
+  if(market===`${awayName} garde sa cage inviolée`) return pick==='Oui' ? hG===0 : null;
+  if(market==='Total buts pair/impair'){
+    const isEven=(total%2===0);
+    return pick==='Pair' ? isEven : pick==='Impair' ? !isEven : null;
+  }
+  return null; // marché non couvert (HT-FT, mi-temps, gagne les 2 MT, etc.) : on ne connaît pas le score
+                // à la mi-temps ici, donc on ne peut pas vérifier automatiquement ces paris.
 }
 
 // Vérifie tous les paris en attente dont le coup d'envoi remonte à plus de 2h30 (le match est presque
@@ -498,12 +505,14 @@ function buildOverTargets(parsed) {
 
 // Remplace par le fit JOINT 1X2+O/U toutes les probabilités qui dépendent du nombre de buts marqués
 // par chaque équipe séparément (pas seulement du résultat 1X2) : Total buts, BTTS, 0-0, match nul
-// avec buts, "équipe marque N buts", gagne sans encaisser. Le 1X2 pur, lui, reste calculé avec le fit
-// 1X2 pur. Un seul (lh,la) alimente toute la grille de scores, donc sans cette séparation, calibrer
-// aussi sur l'Over/Under distordrait légèrement le 1X2 lui-même (constaté sur le tracker Brier).
+// avec buts, "équipe marque N buts", gagne sans encaisser, ainsi que tous les marchés liés aux
+// mi-temps et à la parité du nombre de buts (même dépendance). Le 1X2 pur, lui, reste calculé avec
+// le fit 1X2 pur. Un seul (lh,la) alimente toute la grille de scores, donc sans cette séparation,
+// calibrer aussi sur l'Over/Under distordrait légèrement le 1X2 lui-même (constaté sur le tracker Brier).
 // NOTE : ce même bug (calibrer uniquement sur le 1X2 puis réutiliser pour des marchés qui dépendent
-// du nombre de buts) avait déjà été diagnostiqué et corrigé pour "Total buts" — BTTS et les marchés
-// listés ci-dessus partagent exactement la même dépendance et avaient été oubliés lors du premier fix.
+// du nombre de buts) avait déjà été diagnostiqué et corrigé pour "Total buts", puis pour BTTS —
+// gagne les 2 mi-temps / nul aux 2 mi-temps / BTTS par mi-temps partageaient la même dépendance et
+// avaient été calculés (champs pWBH/pWBA/pDB/pBEH) sans jamais être inclus ici : corrigé aujourd'hui.
 function withJointOUProbs(modelProbs, ouLh, ouLa) {
   const ouProbs=computeModelProbabilities(ouLh, ouLa);
   return {...modelProbs,
@@ -511,7 +520,13 @@ function withJointOUProbs(modelProbs, ouLh, ouLa) {
     pBTTS:ouProbs.pBTTS, pNilNil:ouProbs.pNilNil, pSD:ouProbs.pSD,
     pHScore05:ouProbs.pHScore05, pHScore15:ouProbs.pHScore15,
     pAScore05:ouProbs.pAScore05, pAScore15:ouProbs.pAScore15,
-    pWTNH:ouProbs.pWTNH, pWTNA:ouProbs.pWTNA, pWTNAny:ouProbs.pWTNAny
+    pWTNH:ouProbs.pWTNH, pWTNA:ouProbs.pWTNA, pWTNAny:ouProbs.pWTNAny,
+    pWBH:ouProbs.pWBH, pWBA:ouProbs.pWBA, pDB:ouProbs.pDB, pBEH:ouProbs.pBEH,
+    p1HH:ouProbs.p1HH, p1HD:ouProbs.p1HD, p1HA:ouProbs.p1HA,
+    p2HH:ouProbs.p2HH, p2HD:ouProbs.p2HD, p2HA:ouProbs.p2HA,
+    pCSH:ouProbs.pCSH, pCSA:ouProbs.pCSA,
+    pOddTotal:ouProbs.pOddTotal, pEvenTotal:ouProbs.pEvenTotal,
+    pBTTS1H:ouProbs.pBTTS1H, pBTTS2H:ouProbs.pBTTS2H
   };
 }
 
@@ -521,6 +536,10 @@ function computeModelProbabilities(lh, la) {
   const max=7;
   let pH=0,pD=0,pA=0,pO05=0,pO15=0,pO25=0,pO35=0,pBTTS=0,pNilNil=0,pSD=0;
   let p1HO05=0,p1HO15=0,p2HO05=0,p2HO15=0,pHScore05=0,pHScore15=0,pAScore05=0,pAScore15=0,pWTNH=0,pWTNA=0;
+  // Clean sheet (cage inviolée) : l'adversaire n'a marqué aucun but, quel que soit le résultat final
+  // (différent de "gagne sans encaisser" qui exige en plus la victoire). Pair/impair : parité du
+  // nombre total de buts sur le match complet.
+  let pCSH=0,pCSA=0,pOddTotal=0,pEvenTotal=0;
   for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
     const p=M[i][j];
     if(i>j)pH+=p;else if(i===j)pD+=p;else pA+=p;
@@ -528,10 +547,25 @@ function computeModelProbabilities(lh, la) {
     if(i>0&&j>0)pBTTS+=p;if(i===0&&j===0)pNilNil+=p;if(i===j&&i>0)pSD+=p;
     if(i>0)pHScore05+=p;if(i>1)pHScore15+=p;if(j>0)pAScore05+=p;if(j>1)pAScore15+=p;
     if(i>j&&j===0)pWTNH+=p;if(j>i&&i===0)pWTNA+=p;
+    if(j===0)pCSH+=p; if(i===0)pCSA+=p;
+    if((i+j)%2===0)pEvenTotal+=p; else pOddTotal+=p;
   }
+  // Vainqueur 1ère mi-temps / 2ème mi-temps considérée isolément (pas cumulée avec l'autre mi-temps),
+  // et "but marqué" par mi-temps (BTTS1H/BTTS2H), à partir des grilles M1/M2 déjà calculées plus haut
+  // pour le HT-FT (voir plus bas) — on les réutilise ici sans appel réseau supplémentaire.
+  let p1HH=0,p1HD=0,p1HA=0,pBTTS1H=0;
   for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
-    if(i+j>0)p1HO05+=M1[i][j];if(i+j>1)p1HO15+=M1[i][j];
-    if(i+j>0)p2HO05+=M2[i][j];if(i+j>1)p2HO15+=M2[i][j];
+    const p=M1[i][j];
+    if(i+j>0)p1HO05+=p;if(i+j>1)p1HO15+=p;
+    if(i>j)p1HH+=p;else if(i===j)p1HD+=p;else p1HA+=p;
+    if(i>0&&j>0)pBTTS1H+=p;
+  }
+  let p2HH=0,p2HD=0,p2HA=0,pBTTS2H=0;
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+    const p=M2[i][j];
+    if(i+j>0)p2HO05+=p;if(i+j>1)p2HO15+=p;
+    if(i>j)p2HH+=p;else if(i===j)p2HD+=p;else p2HA+=p;
+    if(i>0&&j>0)pBTTS2H+=p;
   }
   const htftMap={};
   for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
@@ -550,7 +584,19 @@ function computeModelProbabilities(lh, la) {
       if(i>j&&k>l)pWBH+=w;if(i<j&&k<l)pWBA+=w;if(i===j&&k===l)pDB+=w;if(i>0&&j>0&&k>0&&l>0)pBEH+=w;
     }
   }
-  return {pH,pD,pA,pO05,pO15,pO25,pO35,pBTTS,pNilNil,pSD,p1HO05,p1HO15,p2HO05,p2HO15,pHScore05,pHScore15,pAScore05,pAScore15,pWTNH,pWTNA,pWTNAny:pWTNH+pWTNA,htftMap,pWBH,pWBA,pDB,pBEH};
+  return {pH,pD,pA,pO05,pO15,pO25,pO35,pBTTS,pNilNil,pSD,p1HO05,p1HO15,p2HO05,p2HO15,pHScore05,pHScore15,pAScore05,pAScore15,pWTNH,pWTNA,pWTNAny:pWTNH+pWTNA,htftMap,pWBH,pWBA,pDB,pBEH,
+    p1HH,p1HD,p1HA,p2HH,p2HD,p2HA,pCSH,pCSA,pOddTotal,pEvenTotal,pBTTS1H,pBTTS2H};
+}
+
+// Calcule les 3 scores exacts les plus probables à partir des lambdas plein match, pour affichage
+// (pas utilisé pour la détection de value bets — les cotes "Score exact" fournies par l'API sont
+// trop peu fiables/complètes pour calibrer ou comparer proprement).
+function getTopScorelines(lh, la, n=3) {
+  const M=buildScoreMatrix(lh,la,6);
+  const list=[];
+  for(let i=0;i<=6;i++) for(let j=0;j<=6;j++) list.push({h:i,a:j,p:M[i][j]});
+  list.sort((a,b)=>b.p-a.p);
+  return list.slice(0,n);
 }
 
 // Projette le modèle calibré (cotes ou forme, pas une formule à paliers fixes) sur le temps restant
@@ -564,7 +610,7 @@ function computeLiveProbabilities(baseLh, baseLa, hG, aG, remaining, domAdjust=0
   const lhRem=Math.max(0.02, baseLh*frac*(1+domAdjust*0.3));
   const laRem=Math.max(0.02, baseLa*frac*(1-domAdjust*0.3));
   const max=6, M=buildScoreMatrix(lhRem,laRem,max);
-  let pH=0,pD=0,pA=0,pBTTS=0,pWTNH=0,pWTNA=0;
+  let pH=0,pD=0,pA=0,pBTTS=0,pWTNH=0,pWTNA=0,pCSH=0,pCSA=0,pOddTotal=0,pEvenTotal=0;
   const totalDist={}; // distribution du nombre de buts ADDITIONNELS (pas total final)
   for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
     const p=M[i][j], finalH=hG+i, finalA=aG+j;
@@ -572,9 +618,11 @@ function computeLiveProbabilities(baseLh, baseLa, hG, aG, remaining, domAdjust=0
     if(finalH>0 && finalA>0) pBTTS+=p;
     if(finalH>finalA && finalA===0) pWTNH+=p; // le domicile gagne sans avoir encaissé
     if(finalA>finalH && finalH===0) pWTNA+=p; // l'extérieur gagne sans avoir encaissé
+    if(finalA===0) pCSH+=p; if(finalH===0) pCSA+=p; // cage inviolée (final), quel que soit le résultat
+    if((finalH+finalA)%2===0) pEvenTotal+=p; else pOddTotal+=p;
     const add=i+j; totalDist[add]=(totalDist[add]||0)+p;
   }
-  return {pH,pD,pA,pBTTS,pWTNH,pWTNA,totalDist,lhRem,laRem};
+  return {pH,pD,pA,pBTTS,pWTNH,pWTNA,pCSH,pCSA,pOddTotal,pEvenTotal,totalDist,lhRem,laRem};
 }
 // Probabilité que le total de buts FINAL dépasse `line`, à partir de la distribution des buts
 // additionnels calculée ci-dessus et du total déjà marqué.
@@ -582,6 +630,16 @@ function liveOverProb(totalDist, currentTotal, line) {
   let p=0;
   Object.entries(totalDist).forEach(([add,prob])=>{ if(currentTotal+Number(add)>line) p+=prob; });
   return p;
+}
+// Mêmes scores exacts les plus probables que getTopScorelines, mais en direct : on part du score déjà
+// acquis (hG,aG) et on ajoute la distribution des buts restants (lhRem/laRem, déjà mis à l'échelle du
+// temps restant par computeLiveProbabilities) plutôt que de repartir des lambdas plein match.
+function getTopLiveScorelines(lhRem, laRem, hG, aG, n=3) {
+  const max=6, M=buildScoreMatrix(lhRem,laRem,max);
+  const list=[];
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++) list.push({h:hG+i, a:aG+j, p:M[i][j]});
+  list.sort((a,b)=>b.p-a.p);
+  return list.slice(0,n);
 }
 
 function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
@@ -630,6 +688,25 @@ function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
   if(o.sh_over15)checkValue('2ème MT Over 1.5','Oui',modelProbs.p2HO15,o.sh_over15);
   if(o.homeScore05)checkValue(`${homeName} marque`,'Oui',modelProbs.pHScore05,o.homeScore05);
   if(o.awayScore05)checkValue(`${awayName} marque`,'Oui',modelProbs.pAScore05,o.awayScore05);
+  // --- Nouveaux marchés (mi-temps, cage inviolée, pair/impair, gagne les 2 MT) : les noms de marché
+  // ci-dessous ("First Half Winner", "Second Half Winner", "Odd/Even", "Team Clean Sheet", "To Win
+  // Both Halves") suivent la convention habituelle d'API-Football, mais n'ont pas pu être vérifiés
+  // contre une vraie réponse de l'API dans cette session (pas d'accès réseau ici). Si un de ces
+  // marchés ne remonte jamais de value bet alors que tu sais que 1xBet propose la cote, ouvre le
+  // journal 🐛 Debug sur un match qui a des cotes O/U (le diagnostic liste les clés reçues) et
+  // dis-moi le nom exact du marché — un seul mot à corriger dans parseOdds1xbet suffira.
+  if(o.h1Home)checkValue('Vainqueur 1ère MT',`${homeName}`,modelProbs.p1HH,o.h1Home);
+  if(o.h1Draw)checkValue('Vainqueur 1ère MT','Nul',modelProbs.p1HD,o.h1Draw);
+  if(o.h1Away)checkValue('Vainqueur 1ère MT',`${awayName}`,modelProbs.p1HA,o.h1Away);
+  if(o.h2Home)checkValue('Vainqueur 2ème MT',`${homeName}`,modelProbs.p2HH,o.h2Home);
+  if(o.h2Draw)checkValue('Vainqueur 2ème MT','Nul',modelProbs.p2HD,o.h2Draw);
+  if(o.h2Away)checkValue('Vainqueur 2ème MT',`${awayName}`,modelProbs.p2HA,o.h2Away);
+  if(o.oddTotal)checkValue('Total buts pair/impair','Impair',modelProbs.pOddTotal,o.oddTotal);
+  if(o.evenTotal)checkValue('Total buts pair/impair','Pair',modelProbs.pEvenTotal,o.evenTotal);
+  if(o.csHome)checkValue(`${homeName} garde sa cage inviolée`,'Oui',modelProbs.pCSH,o.csHome);
+  if(o.csAway)checkValue(`${awayName} garde sa cage inviolée`,'Oui',modelProbs.pCSA,o.csAway);
+  if(o.wbHome)checkValue(`${homeName} gagne les 2 mi-temps`,'Oui',modelProbs.pWBH,o.wbHome);
+  if(o.wbAway)checkValue(`${awayName} gagne les 2 mi-temps`,'Oui',modelProbs.pWBA,o.wbAway);
   const htftKeys={'1/1':`${homeName}/${homeName}`,'1/X':`${homeName}/Nul`,'X/X':'Nul/Nul','X/1':`Nul/${homeName}`,'X/2':`Nul/${awayName}`,'2/2':`${awayName}/${awayName}`,'2/X':`${awayName}/Nul`,'2/1':`${awayName}/${homeName}`,'1/2':`${homeName}/${awayName}`};
   Object.entries(htftKeys).forEach(([key,label])=>{if(o[`htft_${key}`])checkValue('HT-FT',label,modelProbs.htftMap[key]||0,o[`htft_${key}`]);});
   return valueBets.sort((a,b)=>b.edge-a.edge);
@@ -653,6 +730,14 @@ function parseOdds1xbet(oddsData, homeName, awayName) {
   result.wtnHome=getBet('Win to Nil','Home');result.wtnAway=getBet('Win to Nil','Away');
   result.scoreDraw=getBet('Score - Both Teams To Score','Yes');result.nilNil=getBet('Exact Score','0-0');
   result.homeScore05=getBet(`${homeName} Total Goals`,'Over 0.5');result.awayScore05=getBet(`${awayName} Total Goals`,'Over 0.5');
+  // --- Nouveaux marchés : noms de marché standards côté API-Football, à confirmer via le journal
+  // de diagnostic (voir commentaire dans findValueBets). Aucun risque si le nom est faux : getBet
+  // renvoie simplement null et le marché n'apparaît pas, sans casser le reste.
+  result.h1Home=getBet('First Half Winner','Home');result.h1Draw=getBet('First Half Winner','Draw');result.h1Away=getBet('First Half Winner','Away');
+  result.h2Home=getBet('Second Half Winner','Home');result.h2Draw=getBet('Second Half Winner','Draw');result.h2Away=getBet('Second Half Winner','Away');
+  result.oddTotal=getBet('Odd/Even','Odd');result.evenTotal=getBet('Odd/Even','Even');
+  result.csHome=getBet('Team Clean Sheet','Home');result.csAway=getBet('Team Clean Sheet','Away');
+  result.wbHome=getBet('To Win Both Halves','Home');result.wbAway=getBet('To Win Both Halves','Away');
   return result;
 }
 
@@ -667,6 +752,14 @@ function renderValueBet(vb) {
 function confidenceBarHTML(v) {
   const pct=Math.round(v*100),color=pct>=65?"#1a6b3a":pct>=50?"#b08900":"#9b2c2c";
   return `<div style="display:flex;align-items:center;gap:8px;margin-top:4px"><div style="flex:1;height:5px;background:#e8ecf4;border-radius:4px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${color};border-radius:4px"></div></div><span style="font-size:12px;font-weight:800;color:${color};min-width:36px;text-align:right">${pct}%</span></div>`;
+}
+// Petite fonction utilitaire pour une ligne de probabilité dans le panneau "Probabilités du modèle"
+// (avant-match et en direct), pour ne pas répéter le même template partout.
+function renderProbRow(label, p) {
+  return `<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${label}</div>${confidenceBarHTML(p)}</div>`;
+}
+function renderProbSectionTitle(label) {
+  return `<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:10px 0 4px;text-transform:uppercase;letter-spacing:0.5px;">${label}</div>`;
 }
 
 // Calcule le modèle et détecte les value bets pour un match donné, à partir des cotes 1xBet.
@@ -812,16 +905,22 @@ async function getValueBetsForFixture(fixture) {
   // quelles, ou si un souci de lecture aplatit artificiellement les probabilités du modèle.
   console.warn(`[pronos] Diag calibration ${home.name} vs ${away.name} : cotes brutes 1X2=[${parsed.home1x2},${parsed.draw1x2},${parsed.away1x2}] → implicite=[${(nH*100).toFixed(0)}%,${(nD*100).toFixed(0)}%,${(nA*100).toFixed(0)}%] → modèle=[${(modelProbs.pH*100).toFixed(0)}%,${(modelProbs.pD*100).toFixed(0)}%,${(modelProbs.pA*100).toFixed(0)}%]`);
   const overTargets=buildOverTargets(parsed);
+  // goalLh/goalLa : lambdas effectivement utilisés pour tous les marchés dépendants du nombre de
+  // buts (BTTS, mi-temps, score exact...) — le fit joint 1X2+O/U si des cotes O/U sont disponibles,
+  // sinon les mêmes lambdas que le 1X2 pur. Renvoyés pour que l'affichage (ex: score exact) utilise
+  // toujours la calibration la plus fiable disponible, cohérente avec ce qui alimente modelProbs.
+  let goalLh=lh, goalLa=la;
   if(overTargets.length){
     const {lh:ouLh,la:ouLa}=estimateLambdas(nH,nD,nA,overTargets);
     modelProbs=withJointOUProbs(modelProbs,ouLh,ouLa);
+    goalLh=ouLh; goalLa=ouLa;
     // Diagnostic temporaire : permet de vérifier, sur un match précis, si les cotes Over/Under brutes
     // et la cible implicite (sans marge) qu'on a fournies au fit joint correspondent bien à ce que
     // 1xBet affiche réellement — utile pour enquêter sur un edge Total buts anormalement élevé.
     console.warn(`[pronos] Diag Over/Under ${home.name} vs ${away.name} : cibles=[${overTargets.map(t=>`O${t.line}=${(t.p*100).toFixed(0)}%`).join(', ')}] → modèle=[O0.5=${(modelProbs.pO05*100).toFixed(0)}%, O1.5=${(modelProbs.pO15*100).toFixed(0)}%, O2.5=${(modelProbs.pO25*100).toFixed(0)}%, O3.5=${(modelProbs.pO35*100).toFixed(0)}%] cotes brutes=[${['over05','under05','over15','under15','over25','under25','over35','under35'].map(k=>`${k}=${parsed[k]||'?'}`).join(', ')}]`);
   }
   const valueBets=findValueBets(modelProbs,parsed,home.name,away.name);
-  return {parsed, modelProbs, valueBets, lh, la};
+  return {parsed, modelProbs, valueBets, lh, la, goalLh, goalLa};
 }
 
 // Scanne à la demande un lot borné de matchs avant-match (pas tous, pour rester rapide et stable) et
@@ -1006,11 +1105,11 @@ async function showPredictions(fixture,container,btn) {
         if(aRed>0) factors.push({label:`${away.name} : ${aRed} carton${aRed>1?'s':''} rouge${aRed>1?'s':''}`, dir:'📉'});
       }
       if(Math.abs(dom)>0.05) factors.push({label:`${dom>0?home.name:away.name} plus dangereux (tirs cadrés/corners)`, dir:'📈'});
-      const {pH,pD,pA,pBTTS,pWTNH,pWTNA,totalDist}=computeLiveProbabilities(baseLh,baseLa,hG,aG,remaining,dom);
+      const {pH,pD,pA,pBTTS,pWTNH,pWTNA,pCSH,pCSA,pOddTotal,pEvenTotal,totalDist,lhRem,laRem}=computeLiveProbabilities(baseLh,baseLa,hG,aG,remaining,dom);
       html+=`<div style="font-size:10px;color:#8a9ab8;margin-bottom:6px;">Basé sur : ${source}, projeté sur ${remaining} min restantes</div>`;
       if(factors.length) html+=`<div style="font-size:10px;color:#4a6090;margin-bottom:8px;">${factors.map(f=>`${f.dir} ${f.label}`).join('<br>')}</div>`;
       html+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin-bottom:6px;">📊 Probabilités en temps réel</div>`;
-      [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}].sort((a,b)=>b.p-a.p).forEach(r=>{html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+      [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}].sort((a,b)=>b.p-a.p).forEach(r=>{html+=renderProbRow(r.label,r.p);});
       const tG=hG+aG;
       // On affiche toujours le PROCHAIN seuil pas encore atteint (tG+0.5), jamais un seuil fixe à 2.5 :
       // si 4 buts sont déjà marqués, prédire "Plus de 2.5 buts" à 100% n'est pas une prédiction, c'est
@@ -1020,15 +1119,21 @@ async function showPredictions(fixture,container,btn) {
       html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${pOverNext>=0.5?`Plus de ${nextLine} buts au total`:`Moins de ${nextLine} buts au total`}</div>${confidenceBarHTML(pOverNext>=0.5?pOverNext:1-pOverNext)}</div>`;
       // Marchés supplémentaires (mêmes que l'avant-match), calculés à partir de la même grille de
       // scores projetée — pas de nouvelle logique, juste plus de lectures du même modèle.
-      html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:10px 0 4px;text-transform:uppercase;letter-spacing:0.5px;">Autres marchés</div>`;
+      html+=renderProbSectionTitle('Autres marchés');
       [
         {label:`${home.name} ou Nul`, p:pH+pD},
         {label:`${away.name} ou Nul`, p:pD+pA},
         {label:`${home.name} ou ${away.name}`, p:pH+pA},
         {label:'BTTS (les deux marquent)', p:pBTTS},
+        {label:'Total buts (final) pair', p:pEvenTotal},
+        {label:'Total buts (final) impair', p:pOddTotal},
+        {label:`${home.name} garde sa cage inviolée`, p:pCSH},
+        {label:`${away.name} garde sa cage inviolée`, p:pCSA},
         ...(hG===0?[{label:`${away.name} gagne sans encaisser`, p:pWTNA}]:[]),
         ...(aG===0?[{label:`${home.name} gagne sans encaisser`, p:pWTNH}]:[])
-      ].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+      ].forEach(r=>{html+=renderProbRow(r.label,r.p);});
+      html+=renderProbSectionTitle('Score final le plus probable');
+      getTopLiveScorelines(lhRem,laRem,hG,aG,3).forEach(s=>{html+=renderProbRow(`${s.h}-${s.a}`,s.p);});
       // Détection de value bets EN DIRECT : réutilise le même mécanisme que l'avant-match (findValueBets),
       // sur les mêmes cotes 1xBet déjà récupérées ci-dessus (bookmaker=8 explicitement filtré dans la
       // requête, donc l'attribution est fiable — contrairement à l'ancien endpoint générique "cotes
@@ -1039,7 +1144,7 @@ async function showPredictions(fixture,container,btn) {
       // devenu quasi certain plutôt que de le geler — la cote qu'on récupère alors n'existe plus du
       // tout côté bookmaker, donc l'edge affiché serait entièrement fictif.
       if(liveParsed && remaining>10){
-        const liveModelProbs={pH,pD,pA,pBTTS,pWTNH,pWTNA};
+        const liveModelProbs={pH,pD,pA,pBTTS,pWTNH,pWTNA,pCSH,pCSA,pOddTotal,pEvenTotal};
         const liveValueBets=findValueBets(liveModelProbs,liveParsed,home.name,away.name);
         if(liveValueBets.length>0){
           html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:10px 0 4px;text-transform:uppercase;letter-spacing:0.5px;">🎯 Value bets vs 1xBet (en direct)</div>`;
@@ -1055,7 +1160,7 @@ async function showPredictions(fixture,container,btn) {
       }catch(e){ console.warn(`[pronos] Contexte additionnel indisponible pour fixture ${fixture.fixture.id} :`, e.message); }
     } else {
       html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
-      const {parsed, modelProbs, valueBets, lh, la}=await getValueBetsForFixture(fixture);
+      const {parsed, modelProbs, valueBets, lh, la, goalLh, goalLa}=await getValueBetsForFixture(fixture);
       if(!parsed||!parsed.home1x2){
         try{
           const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id,fixture.fixture.date),getTeamForm(away.id,fixture.fixture.date)]);
@@ -1063,8 +1168,8 @@ async function showPredictions(fixture,container,btn) {
           const formLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
           const formProbs=computeModelProbabilities(formLh,formLa);
           html+=`<div class="no-odds">⚠️ Cotes 1xBet indisponibles pour ce match ; estimation basée sur les derniers matchs de chaque équipe (pas de comparaison à une cote possible, donc aucun value bet ne peut être calculé ici).</div>`;
-          html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:12px 0 6px;text-transform:uppercase;letter-spacing:0.5px;">Estimation (forme récente)</div>`;
-          [{label:`Victoire ${home.name}`,p:formProbs.pH},{label:'Match nul',p:formProbs.pD},{label:`Victoire ${away.name}`,p:formProbs.pA},{label:'BTTS Oui',p:formProbs.pBTTS},{label:'Over 2.5',p:formProbs.pO25}].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+          html+=renderProbSectionTitle('Estimation (forme récente)');
+          [{label:`Victoire ${home.name}`,p:formProbs.pH},{label:'Match nul',p:formProbs.pD},{label:`Victoire ${away.name}`,p:formProbs.pA},{label:'BTTS Oui',p:formProbs.pBTTS},{label:'Over 2.5',p:formProbs.pO25}].forEach(r=>{html+=renderProbRow(r.label,r.p);});
         }catch(e){
           html+=`<div class="no-odds">⚠️ Cotes 1xBet non disponibles pour ce match, et la forme récente n'a pas pu être calculée non plus (probablement trop peu de matchs récents connus pour ces équipes — fréquent sur les amicaux).</div>`;
         }
@@ -1105,8 +1210,21 @@ async function showPredictions(fixture,container,btn) {
             html+=restBets.map(renderValueBet).join("");
           }
         }
+        // --- Panneau "Probabilités du modèle" étendu : avant, seulement 5 lignes (1X2, BTTS, Over
+        // 2.5) étaient affichées alors que le modèle calcule déjà beaucoup plus (voir
+        // computeModelProbabilities). Regroupé par catégorie pour rester lisible sur mobile.
         html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:12px 0 6px;padding-top:10px;border-top:1px dashed #e0e4ee;text-transform:uppercase;letter-spacing:0.5px;">Probabilités du modèle</div>`;
-        [{label:`Victoire ${home.name}`,p:modelProbs.pH},{label:'Match nul',p:modelProbs.pD},{label:`Victoire ${away.name}`,p:modelProbs.pA},{label:'BTTS Oui',p:modelProbs.pBTTS},{label:'Over 2.5',p:modelProbs.pO25}].forEach(r=>{html+=`<div style="padding:5px 0;border-top:1px solid #f0f2f5"><div style="font-size:12px;font-weight:700">${r.label}</div>${confidenceBarHTML(r.p)}</div>`;});
+        [{label:`Victoire ${home.name}`,p:modelProbs.pH},{label:'Match nul',p:modelProbs.pD},{label:`Victoire ${away.name}`,p:modelProbs.pA}].forEach(r=>{html+=renderProbRow(r.label,r.p);});
+        html+=renderProbSectionTitle('Double Chance');
+        [{label:`${home.name} ou Nul`,p:modelProbs.pH+modelProbs.pD},{label:`${home.name} ou ${away.name}`,p:modelProbs.pH+modelProbs.pA},{label:`Nul ou ${away.name}`,p:modelProbs.pD+modelProbs.pA}].forEach(r=>{html+=renderProbRow(r.label,r.p);});
+        html+=renderProbSectionTitle('Buts');
+        [{label:'BTTS Oui',p:modelProbs.pBTTS},{label:'Over 0.5',p:modelProbs.pO05},{label:'Over 1.5',p:modelProbs.pO15},{label:'Over 2.5',p:modelProbs.pO25},{label:'Over 3.5',p:modelProbs.pO35},{label:'0-0',p:modelProbs.pNilNil},{label:'Match nul avec buts',p:modelProbs.pSD},{label:'Total buts pair',p:modelProbs.pEvenTotal},{label:'Total buts impair',p:modelProbs.pOddTotal}].forEach(r=>{html+=renderProbRow(r.label,r.p);});
+        html+=renderProbSectionTitle('Équipes');
+        [{label:`${home.name} marque`,p:modelProbs.pHScore05},{label:`${away.name} marque`,p:modelProbs.pAScore05},{label:`${home.name} gagne sans encaisser`,p:modelProbs.pWTNH},{label:`${away.name} gagne sans encaisser`,p:modelProbs.pWTNA},{label:`${home.name} garde sa cage inviolée`,p:modelProbs.pCSH},{label:`${away.name} garde sa cage inviolée`,p:modelProbs.pCSA}].forEach(r=>{html+=renderProbRow(r.label,r.p);});
+        html+=renderProbSectionTitle('Mi-temps');
+        [{label:`Vainqueur 1ère MT : ${home.name}`,p:modelProbs.p1HH},{label:'Vainqueur 1ère MT : Nul',p:modelProbs.p1HD},{label:`Vainqueur 1ère MT : ${away.name}`,p:modelProbs.p1HA},{label:`Vainqueur 2ème MT : ${home.name}`,p:modelProbs.p2HH},{label:'Vainqueur 2ème MT : Nul',p:modelProbs.p2HD},{label:`Vainqueur 2ème MT : ${away.name}`,p:modelProbs.p2HA},{label:'But en 1ère MT (+0.5)',p:modelProbs.p1HO05},{label:'But en 2ème MT (+0.5)',p:modelProbs.p2HO05},{label:'BTTS en 1ère MT',p:modelProbs.pBTTS1H},{label:'BTTS en 2ème MT',p:modelProbs.pBTTS2H},{label:`${home.name} gagne les 2 mi-temps`,p:modelProbs.pWBH},{label:`${away.name} gagne les 2 mi-temps`,p:modelProbs.pWBA},{label:'Match nul aux 2 mi-temps',p:modelProbs.pDB}].forEach(r=>{html+=renderProbRow(r.label,r.p);});
+        html+=renderProbSectionTitle('Score exact (top 3)');
+        getTopScorelines(goalLh,goalLa,3).forEach(s=>{html+=renderProbRow(`${s.h}-${s.a}`,s.p);});
         try{
           const ctx=await getMatchContext(fixture);
           html+=renderMatchContext(ctx,home.name,away.name);
