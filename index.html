@@ -104,7 +104,7 @@
     <button class="tab-btn" id="tabDone" onclick="switchTab('done')">TERMINÉS</button>
   </div>
 </div>
-<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-14-timeout-fix</div>
+<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-14-error-net</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
@@ -207,6 +207,29 @@ function pushDebugLog(level, args) {
 }
 console.warn=function(...args){ pushDebugLog('warn',args); _origWarn(...args); };
 console.error=function(...args){ pushDebugLog('error',args); _origError(...args); };
+
+// Filet de sécurité : sans outils développeur sur mobile, une erreur JS non explicitement attrapée
+// (bug qu'on n'a pas anticipé, script partiellement chargé, etc.) laissait l'app bloquée sur
+// "Chargement..." pour toujours, sans AUCUN indice visible pour comprendre pourquoi. Ces deux
+// gestionnaires globaux interceptent absolument tout ce qui passerait au travers des try/catch
+// existants et l'affichent directement à l'écran, pour qu'un blocage soit toujours accompagné d'un
+// message qu'on peut se faire décrire ou capturer en photo.
+window.addEventListener('error', (event) => {
+  const msg = event && event.message || 'erreur inconnue';
+  console.error('[pronos] Erreur JS non interceptée :', msg, event && event.filename ? `(${event.filename}:${event.lineno})` : '');
+  const se=document.getElementById('status'), eb=document.getElementById('errorBox'), rb=document.getElementById('refreshBtn');
+  if(se) se.style.display='none';
+  if(eb) eb.innerHTML=`<div class="error-box">⚠️ Erreur inattendue : ${msg}</div>`;
+  if(rb) rb.style.display='flex';
+});
+window.addEventListener('unhandledrejection', (event) => {
+  const msg = (event && event.reason && event.reason.message) || String(event && event.reason);
+  console.error('[pronos] Promesse rejetée non interceptée :', msg);
+  const se=document.getElementById('status'), eb=document.getElementById('errorBox'), rb=document.getElementById('refreshBtn');
+  if(se) se.style.display='none';
+  if(eb) eb.innerHTML=`<div class="error-box">⚠️ Erreur inattendue (promesse) : ${msg}</div>`;
+  if(rb) rb.style.display='flex';
+});
 function updateDebugBadge(){
   const b=document.getElementById('debugBadge');
   if(!b) return;
@@ -1368,32 +1391,4 @@ function renderMatch(fixture) {
 function renderLeagueGroup(leagueName,countryName,fixtures,hasLive) {
   const w=document.createElement("div");w.className="league-group";
   const h=document.createElement("div");h.className="league-header"+(hasLive?" live-header":"");
-  h.innerHTML=`<span class="league-flag">${countryFlag(countryName)}</span><span class="league-title">${formatLeagueName(leagueName,countryName)}</span>${hasLive?`<span class="league-live-badge">LIVE</span>`:""}<span class="league-count${hasLive?" live-count":""}">${fixtures.length}</span><span class="league-chevron">▼</span>`;
-  const mc=document.createElement("div");mc.className="league-matches";
-  fixtures.forEach(f=>mc.appendChild(renderMatch(f)));
-  h.addEventListener("click",()=>{const o=mc.classList.toggle("open");h.querySelector(".league-chevron").classList.toggle("open",o);});
-  w.appendChild(h);w.appendChild(mc);return w;
-}
-
-function renderTab(fixtures) {
-  const ml=document.getElementById("matchList"),fn=document.getElementById("footerNote");
-  ml.innerHTML="";fn.innerHTML="";
-  if(fixtures.length===0){ml.innerHTML=`<div class="empty-tab">Aucun match dans cet onglet.</div>`;return;}
-  const bl={};
-  fixtures.forEach(f=>{const k=`${f.league.id}`;if(!bl[k])bl[k]={name:f.league.name,country:f.league.country,fixtures:[]};bl[k].fixtures.push(f);});
-  Object.values(bl).sort((a,b)=>leaguePriority(a.name)-leaguePriority(b.name)).forEach(g=>{
-    const hl=g.fixtures.some(f=>isLive(f));
-    g.fixtures.sort((a,b)=>{const pa=isLive(a)?0:isUpcoming(a)?1:2,pb=isLive(b)?0:isUpcoming(b)?1:2;if(pa!==pb)return pa-pb;return new Date(a.fixture.date)-new Date(b.fixture.date);});
-    ml.appendChild(renderLeagueGroup(g.name,g.country,g.fixtures,hl));
-  });
-  fn.innerHTML="🔥 +10% edge fort · ⚡ +6% solide · +3% léger. Joue avec prudence.";
-  fn.className="footer-note";
-}
-
-function switchTab(tab) {
-  currentTab=tab;
-  ["upcoming","live","done"].forEach(t=>document.getElementById(`tab${t.charAt(0).toUpperCase()+t.slice(1)}`).classList.toggle("active",t===tab));
-  let fx;
-  if(tab==="live")fx=allFixtures.filter(f=>isLive(f));
-  else if(tab==="upcoming")fx=allFixtures.filter(f=>isUpcoming(f));
-  e
+  h.innerHTML=`<span class="league-flag">${countryFlag(countryName)}</span><span class="league-title">${formatLeagueName(leagueName,countryName)}</span>${hasLive?`<span class="league-live-badge">LIVE</span>`:""}<span class="league-count${hasLive?" live-count":""}">${fixtures.length}</span><span class="league-chevron">▼</span>`
