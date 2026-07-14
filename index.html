@@ -104,7 +104,7 @@
     <button class="tab-btn" id="tabDone" onclick="switchTab('done')">TERMINÉS</button>
   </div>
 </div>
-<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-14-stale-odds-fix</div>
+<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-14-timeout-fix</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
@@ -161,8 +161,20 @@ function todayISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
+// Délai d'expiration sur chaque appel API : sans ça, si le proxy CORS Val Town ou l'API-Football
+// reste bloqué sans jamais répondre (ni succès, ni erreur HTTP), l'app reste figée sur
+// "Chargement..." indéfiniment, sans aucun message pour comprendre pourquoi (vécu concrètement).
+// NOTE : volontairement PAS d'AbortController/AbortSignal ici. Dans certains environnements qui
+// relaient fetch() via postMessage entre fenêtres (ex: l'aperçu de fichier intégré à Claude), un
+// AbortSignal passé en option de fetch fait planter l'appel ("AbortSignal object could not be
+// cloned") car cet objet n'est pas sérialisable. Un simple Promise.race avec un minuteur fait le
+// même travail sans ce risque, et fonctionne partout.
+const API_TIMEOUT_MS = 15000;
 async function apiGet(path) {
-  const res = await fetch(`${API_BASE}${path}`);
+  const res = await Promise.race([
+    fetch(`${API_BASE}${path}`),
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`Délai dépassé (${API_TIMEOUT_MS/1000}s) — le proxy ou l'API ne répond pas`)), API_TIMEOUT_MS))
+  ]);
   if (!res.ok) throw new Error(`Erreur API (${res.status})`);
   const json = await res.json();
   if (json.errors && Object.keys(json.errors).length > 0) throw new Error(JSON.stringify(json.errors));
@@ -1384,20 +1396,4 @@ function switchTab(tab) {
   let fx;
   if(tab==="live")fx=allFixtures.filter(f=>isLive(f));
   else if(tab==="upcoming")fx=allFixtures.filter(f=>isUpcoming(f));
-  else fx=allFixtures.filter(f=>isFinished(f));
-  renderTab(fx);
-  const lc=allFixtures.filter(f=>isLive(f)).length;
-  document.getElementById("tabLive").innerHTML=`<span class="live-dot"></span>EN DIRECT${lc>0?` (${lc})`:""}`;
-  document.getElementById("tabUpcoming").textContent=`AVANT-MATCH (${allFixtures.filter(f=>isUpcoming(f)).length})`;
-  document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)).length})`;
-  const scanBtn=document.getElementById("scanVBBtn");
-  scanBtn.style.display=tab==="upcoming"?"flex":"none";
-  const scanLiveBtn=document.getElementById("scanLiveVBBtn");
-  scanLiveBtn.style.display=tab==="live"?"flex":"none";
-  renderVBHighlightSection();
-  renderVBLiveHighlightSection();
-}
-
-async function loadFixtures(silent=false) {
-  const se=document.getElementById("status"),eb=document.getElementById("errorBox"),rb=document.getElementById("refreshBtn");
-  if(!silent){se.style.
+  e
