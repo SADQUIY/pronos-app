@@ -104,7 +104,7 @@
     <button class="tab-btn" id="tabDone" onclick="switchTab('done')">TERMINÉS</button>
   </div>
 </div>
-<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-14-live-scan</div>
+<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-14-stale-odds-fix</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
@@ -929,6 +929,24 @@ async function getValueBetsForFixture(fixture) {
   return {parsed, modelProbs, valueBets, lh, la, goalLh, goalLa};
 }
 
+// Détecte si les cotes 1xBet récupérées "en direct" sont vraisemblablement PÉRIMÉES (encore les
+// cotes avant-match, jamais mises à jour) plutôt que de vraies cotes live. Constaté concrètement :
+// un match à 3-1 à la 80e minute où la cote récupérée pour l'équipe qui mène était encore à 2.0,
+// alors que la vraie cote 1xBet affichée dans l'app officielle était à 1.008 (quasi certaine).
+// Principe : une équipe qui mène de 2 buts ou plus à moins de 20 minutes de la fin a, dans la
+// réalité, une probabilité de victoire écrasante (>85%). Si la cote qu'on vient de récupérer pour
+// cette équipe n'a rien de cette domination écrasante, c'est presque certainement une cote figée
+// depuis l'avant-match — comparer notre modèle (correct) à ce prix fantôme produirait un edge
+// entièrement fictif.
+function detectStaleLiveOdds(parsed, hG, aG, remaining) {
+  if(!parsed || !parsed.home1x2 || !parsed.away1x2) return false;
+  const diff = hG - aG;
+  if(Math.abs(diff) < 2 || remaining > 20) return false; // pas assez d'avance/de temps pour trancher franchement
+  const leaderOdd = diff > 0 ? parsed.home1x2 : parsed.away1x2;
+  const leaderImplied = oddsToProb(leaderOdd);
+  return leaderImplied < 0.85;
+}
+
 // Calcule l'analyse complète EN DIRECT d'un match donné (score frais, stats, cotes 1xBet, modèle
 // projeté sur le temps restant, value bets) — factorisé pour être utilisé aussi bien par le clic
 // "Analyser" (showPredictions) que par le scan groupé "🔍 Scanner les value bets (en direct)",
@@ -1003,15 +1021,25 @@ async function getLiveAnalysisForFixture(fixture) {
   }
   if(Math.abs(dom)>0.05) factors.push({label:`${dom>0?home.name:away.name} plus dangereux (tirs cadrés/corners)`, dir:'📈'});
   const liveProbs=computeLiveProbabilities(baseLh,baseLa,hG,aG,remaining,dom);
+  // Vérifie si les cotes récupérées semblent périmées (voir detectStaleLiveOdds ci-dessus). Log de
+  // diagnostic systématique (pas seulement en cas de problème) : en comparant ce log entre deux
+  // clics "Analyser" sur le MÊME match à des minutes différentes, on peut vérifier si la cote
+  // bouge réellement au fil du match ou si elle reste identique du début à la fin — ce qui
+  // confirmerait si le problème est ponctuel ou systématique sur cette source de données.
+  const liveOddsStale = liveParsed ? detectStaleLiveOdds(liveParsed, hG, aG, remaining) : false;
+  if(liveParsed){
+    console.warn(`[pronos] Diag cotes live ${home.name} vs ${away.name} (${elapsed}', score ${hG}-${aG}) : 1X2 récupéré=[${liveParsed.home1x2},${liveParsed.draw1x2},${liveParsed.away1x2}]${liveOddsStale?' ⚠️ SUSPECTÉ PÉRIMÉ (incohérent avec le score actuel)':''}`);
+  }
   // Value bets en direct : même mécanisme que l'avant-match (findValueBets), désactivé dans les 10
-  // dernières minutes (voir note historique plus bas dans showPredictions) — cette règle vit ici
-  // maintenant pour que le scan groupé la respecte aussi, pas seulement le clic "Analyser".
+  // dernières minutes (voir note historique plus bas dans showPredictions) ET désactivé si les
+  // cotes semblent périmées — cette règle vit ici maintenant pour que le scan groupé la respecte
+  // aussi, pas seulement le clic "Analyser".
   let valueBets=[];
-  if(liveParsed && remaining>10){
+  if(liveParsed && remaining>10 && !liveOddsStale){
     const liveModelProbs={pH:liveProbs.pH,pD:liveProbs.pD,pA:liveProbs.pA,pBTTS:liveProbs.pBTTS,pWTNH:liveProbs.pWTNH,pWTNA:liveProbs.pWTNA,pCSH:liveProbs.pCSH,pCSA:liveProbs.pCSA,pOddTotal:liveProbs.pOddTotal,pEvenTotal:liveProbs.pEvenTotal};
     valueBets=findValueBets(liveModelProbs,liveParsed,home.name,away.name);
   }
-  return {fixture:fresh, home, away, elapsed, remaining, hG, aG, ls, source, factors, liveParsed, live:liveProbs, valueBets};
+  return {fixture:fresh, home, away, elapsed, remaining, hG, aG, ls, source, factors, liveParsed, liveOddsStale, live:liveProbs, valueBets};
 }
 
 // Scanne à la demande un lot borné de matchs avant-match (pas tous, pour rester rapide et stable) et
@@ -1176,7 +1204,7 @@ async function showPredictions(fixture,container,btn) {
       fixture=liveA.fixture; // remplace la version potentiellement périmée par la version fraîche
       const idx=allFixtures.findIndex(f=>f.fixture.id===fixture.fixture.id);
       if(idx>=0) allFixtures[idx]=fixture; // garde la liste globale cohérente si on la réaffiche
-      const {elapsed,remaining,hG,aG,ls,source,factors,liveParsed,valueBets:liveValueBets}=liveA;
+      const {elapsed,remaining,hG,aG,ls,source,factors,liveParsed,liveOddsStale,valueBets:liveValueBets}=liveA;
       const {pH,pD,pA,pBTTS,pWTNH,pWTNA,pCSH,pCSA,pOddTotal,pEvenTotal,totalDist,lhRem,laRem}=liveA.live;
       html=`<div class="live-header-note">🔴 ${elapsed}' | Score: ${hG}-${aG}</div>`;
       if(ls)html+=`<div class="stats-box">📊 <b>${home.name}</b>: ${ls.hP}% poss · ${ls.hSh} tirs (${ls.hShOn} cadrés) · ${ls.hC} corners${ls.hRed>0?` · 🟥 ${ls.hRed}`:''}<br>📊 <b>${away.name}</b>: ${ls.aP}% poss · ${ls.aSh} tirs (${ls.aShOn} cadrés) · ${ls.aC} corners${ls.aRed>0?` · 🟥 ${ls.aRed}`:''}</div>`;
@@ -1210,7 +1238,9 @@ async function showPredictions(fixture,container,btn) {
       // l'avant-match) et désactivée dans les 10 dernières minutes (1xBet retire souvent les
       // marchés devenus évidents — confirmé en conditions réelles) : la logique vit dans
       // getLiveAnalysisForFixture, ici on ne fait qu'afficher ce qu'elle a trouvé.
-      if(liveParsed && remaining>10){
+      if(liveOddsStale){
+        html+=`<div style="font-size:11px;color:#9b2c2c;background:#fdf0ef;border-radius:8px;padding:8px 10px;margin:10px 0 4px;">⚠️ Les cotes 1xBet récupérées pour ce match semblent <b>périmées</b> : elles ne reflètent pas du tout le score actuel (encore proches de ce qu'elles étaient avant le coup d'envoi). Analyse de value bet ignorée par prudence — vérifie la vraie cote directement sur 1xBet.</div>`;
+      } else if(liveParsed && remaining>10){
         if(liveValueBets.length>0){
           html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:10px 0 4px;text-transform:uppercase;letter-spacing:0.5px;">🎯 Value bets vs 1xBet (en direct)</div>`;
           html+=`<div style="font-size:10px;color:#b08900;margin-bottom:8px;">⚠️ Pas suivi par le tracker ROI, et la cote peut être figée depuis l'avant-match plutôt que réellement mise à jour en direct — à vérifier toi-même sur 1xBet avant d'agir.</div>`;
@@ -1370,23 +1400,4 @@ function switchTab(tab) {
 
 async function loadFixtures(silent=false) {
   const se=document.getElementById("status"),eb=document.getElementById("errorBox"),rb=document.getElementById("refreshBtn");
-  if(!silent){se.style.display="block";se.innerHTML='<span class="spin">🔄</span> Chargement...';eb.innerHTML="";document.getElementById("matchList").innerHTML="";}
-  try {
-    const [dateData,liveData]=await Promise.all([apiGet(`/fixtures?date=${todayISO()}`),apiGet(`/fixtures?live=all`).catch(()=>[])]);
-    const lm={};(liveData||[]).forEach(f=>{lm[f.fixture.id]=f;});
-    const merged=(dateData||[]).map(f=>lm[f.fixture.id]||f);
-    (liveData||[]).forEach(f=>{if(!merged.find(m=>m.fixture.id===f.fixture.id))merged.push(f);});
-    allFixtures=merged.sort((a,b)=>new Date(a.fixture.date)-new Date(b.fixture.date));
-    se.style.display="none";rb.style.display="flex";
-    switchTab(currentTab);
-  } catch(e) {
-    if(!silent){se.style.display="none";eb.innerHTML=`<div class="error-box">⚠️ Impossible de récupérer les matchs.</div>`;rb.style.display="flex";}
-  }
-}
-
-document.getElementById("dateLabel").textContent=new Date().toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"});
-loadFixtures();
-setInterval(()=>loadFixtures(true),2*60*1000);
-</script>
-</body>
-</html>
+  if(!silent){se.style.
