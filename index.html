@@ -104,13 +104,15 @@
     <button class="tab-btn" id="tabDone" onclick="switchTab('done')">TERMINÉS</button>
   </div>
 </div>
-<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-14-more-markets</div>
+<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-14-live-scan</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
   <button id="refreshBtn" class="refresh-btn" style="display:none" onclick="loadFixtures()">🔄 Rafraîchir</button>
   <button id="scanVBBtn" class="refresh-btn" style="display:none" onclick="scanUpcomingForValueBets()">🔍 Scanner les value bets (avant-match)</button>
   <div id="vbHighlightSection"></div>
+  <button id="scanLiveVBBtn" class="refresh-btn" style="display:none" onclick="scanLiveForValueBets()">🔍 Scanner les value bets (en direct)</button>
+  <div id="vbLiveHighlightSection"></div>
   <div id="matchList"></div>
   <div id="footerNote"></div>
 </div>
@@ -150,6 +152,10 @@ let allFixtures = [], currentTab = "upcoming";
 // Résultats du scan manuel "🔍 Scanner les value bets" : uniquement en mémoire (pas persistant),
 // réinitialisé à chaque rechargement de page. clé = fixture.id, valeur = {fixture, topBet}.
 let scannedValueBets = new Map();
+// Même principe pour le scan en direct, mais réinitialisé à chaque scan (pas seulement au
+// rechargement) : l'état d'un match live change en quelques minutes, donc garder d'anciens
+// résultats d'un scan précédent risquerait d'afficher un value bet déjà périmé.
+let scannedLiveValueBets = new Map();
 
 function todayISO() {
   const d = new Date();
@@ -923,6 +929,91 @@ async function getValueBetsForFixture(fixture) {
   return {parsed, modelProbs, valueBets, lh, la, goalLh, goalLa};
 }
 
+// Calcule l'analyse complète EN DIRECT d'un match donné (score frais, stats, cotes 1xBet, modèle
+// projeté sur le temps restant, value bets) — factorisé pour être utilisé aussi bien par le clic
+// "Analyser" (showPredictions) que par le scan groupé "🔍 Scanner les value bets (en direct)",
+// afin de ne jamais faire diverger la logique entre les deux (même principe que
+// getValueBetsForFixture, qui joue ce rôle côté avant-match).
+async function getLiveAnalysisForFixture(fixture) {
+  // Le score/minute affichés dans la liste globale viennent du dernier chargement (toutes les 2
+  // minutes) — potentiellement dépassé. On récupère ce match précis en frais avant de calculer
+  // quoi que ce soit, pour éviter d'analyser un score qui n'est déjà plus le bon.
+  let fresh=fixture;
+  try{
+    const freshData=await apiGet(`/fixtures?id=${fixture.fixture.id}`);
+    if(freshData && freshData[0]) fresh=freshData[0];
+  }catch(e){ console.warn(`[pronos] Rafraîchissement direct fixture ${fixture.fixture.id} échoué, score potentiellement pas à jour :`, e.message); }
+  const home=fresh.teams.home, away=fresh.teams.away;
+  const elapsed=fresh.fixture.status.elapsed??45, remaining=Math.max(0,90-elapsed);
+  const hG=fresh.goals.home??0, aG=fresh.goals.away??0;
+  let ls=null;
+  try{
+    const sr=await apiGet(`/fixtures/statistics?fixture=${fresh.fixture.id}`);
+    if(sr&&sr.length>=2){
+      const gS=(ts,t)=>{const s=ts.statistics.find(s=>s.type===t);return s?(parseInt(s.value)||0):0;};
+      const hS=sr.find(t=>t.team.id===home.id)||sr[0], aS=sr.find(t=>t.team.id===away.id)||sr[1];
+      ls={hP:gS(hS,"Ball Possession")||50,aP:gS(aS,"Ball Possession")||50,hSh:gS(hS,"Total Shots"),aSh:gS(aS,"Total Shots"),hShOn:gS(hS,"Shots on Goal"),aShOn:gS(aS,"Shots on Goal"),hC:gS(hS,"Corner Kicks"),aC:gS(aS,"Corner Kicks"),hRed:gS(hS,"Red Cards"),aRed:gS(aS,"Red Cards")};
+    }
+  }catch(e){}
+  // La possession seule est un indicateur faible de qui menace vraiment le but adverse ; les tirs
+  // cadrés le sont bien plus. On combine les trois signaux déjà récupérés.
+  let dom=0;
+  if(ls){
+    const possDiff=(ls.hP-50)/100;
+    const shotsOnDiff=Math.max(-0.5,Math.min(0.5,(ls.hShOn-ls.aShOn)/8));
+    const cornersDiff=Math.max(-0.5,Math.min(0.5,(ls.hC-ls.aC)/12));
+    dom=possDiff*0.2+shotsOnDiff*0.55+cornersDiff*0.25;
+  }
+  // On réutilise le VRAI modèle calibré (cotes si dispo, sinon forme récente) au lieu d'une
+  // formule à paliers fixes.
+  let baseLh, baseLa, source, liveParsed=null;
+  try{
+    const oddsData=await apiGet(`/odds?fixture=${fresh.fixture.id}&bookmaker=${BOOKMAKER_1XBET}`);
+    const parsed=parseOdds1xbet(oddsData,home.name,away.name);
+    if(parsed && parsed.home1x2){
+      liveParsed=parsed;
+      const rawH=oddsToProb(parsed.home1x2),rawD=oddsToProb(parsed.draw1x2||2),rawA=oddsToProb(parsed.away1x2);
+      const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
+      ({lh:baseLh,la:baseLa}=estimateLambdas(nH,nD,nA));
+      source='cotes 1xBet';
+    } else {
+      console.warn(`[pronos] Pas de cotes 1xBet en direct pour ${home.name} vs ${away.name} (fixture ${fresh.fixture.id}) : ${oddsData&&oddsData.length?`réponse reçue mais aucun marché 1X2 exploitable (bookmaker ${BOOKMAKER_1XBET} absent de la réponse ou format inattendu)`:'réponse vide de l\'API pour ce bookmaker sur ce match'}. Repli sur la forme récente.`);
+    }
+  }catch(e){
+    console.warn(`[pronos] Échec technique de récupération des cotes en direct pour ${home.name} vs ${away.name} (fixture ${fresh.fixture.id}) :`, e.message);
+  }
+  const factors=[];
+  if(baseLh===undefined){
+    try{
+      const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id,fresh.fixture.date),getTeamForm(away.id,fresh.fixture.date)]);
+      baseLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
+      baseLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
+      if(homeForm.restDays!==null && homeForm.restDays<3){ baseLh*=0.92; factors.push({label:`${home.name} : moins de 3 jours de repos`, dir:'📉'}); }
+      if(awayForm.restDays!==null && awayForm.restDays<3){ baseLa*=0.92; factors.push({label:`${away.name} : moins de 3 jours de repos`, dir:'📉'}); }
+      source='forme récente';
+    }catch(e){ console.warn(`[pronos] Forme indisponible pour fixture ${fresh.fixture.id}, repli sur moyenne générique :`, e.message); }
+  }
+  if(baseLh===undefined){ baseLh=1.35; baseLa=1.1; source='moyenne générique (aucune donnée)'; }
+  if(ls && ((ls.hRed||0)>0 || (ls.aRed||0)>0)){
+    const hRed=ls.hRed||0, aRed=ls.aRed||0;
+    baseLh *= Math.pow(0.65, hRed) * Math.pow(1.12, aRed);
+    baseLa *= Math.pow(0.65, aRed) * Math.pow(1.12, hRed);
+    if(hRed>0) factors.push({label:`${home.name} : ${hRed} carton${hRed>1?'s':''} rouge${hRed>1?'s':''}`, dir:'📉'});
+    if(aRed>0) factors.push({label:`${away.name} : ${aRed} carton${aRed>1?'s':''} rouge${aRed>1?'s':''}`, dir:'📉'});
+  }
+  if(Math.abs(dom)>0.05) factors.push({label:`${dom>0?home.name:away.name} plus dangereux (tirs cadrés/corners)`, dir:'📈'});
+  const liveProbs=computeLiveProbabilities(baseLh,baseLa,hG,aG,remaining,dom);
+  // Value bets en direct : même mécanisme que l'avant-match (findValueBets), désactivé dans les 10
+  // dernières minutes (voir note historique plus bas dans showPredictions) — cette règle vit ici
+  // maintenant pour que le scan groupé la respecte aussi, pas seulement le clic "Analyser".
+  let valueBets=[];
+  if(liveParsed && remaining>10){
+    const liveModelProbs={pH:liveProbs.pH,pD:liveProbs.pD,pA:liveProbs.pA,pBTTS:liveProbs.pBTTS,pWTNH:liveProbs.pWTNH,pWTNA:liveProbs.pWTNA,pCSH:liveProbs.pCSH,pCSA:liveProbs.pCSA,pOddTotal:liveProbs.pOddTotal,pEvenTotal:liveProbs.pEvenTotal};
+    valueBets=findValueBets(liveModelProbs,liveParsed,home.name,away.name);
+  }
+  return {fixture:fresh, home, away, elapsed, remaining, hG, aG, ls, source, factors, liveParsed, live:liveProbs, valueBets};
+}
+
 // Scanne à la demande un lot borné de matchs avant-match (pas tous, pour rester rapide et stable) et
 // fait remonter dans une section dédiée en haut ceux où un value bet a été trouvé. Résultats gardés
 // en mémoire seulement (pas persistants), pour laisser l'utilisateur identifier facilement les
@@ -968,6 +1059,57 @@ function renderVBHighlightSection(){
       return `<div class="league-group"><div class="card" style="cursor:pointer;" onclick="document.getElementById('fixtureCard_${fixture.fixture.id}')?.scrollIntoView({behavior:'smooth',block:'center'})">`+
         `<div style="font-size:10px;font-weight:700;color:#1a3a6b;margin-bottom:2px;">${leagueLabel}</div>`+
         `<div style="font-size:11px;color:#8a9ab8;margin-bottom:4px;">${home} vs ${away}</div>`+
+        `<div style="font-size:13px;font-weight:800;margin-bottom:4px;">${topBet.market} : ${topBet.pick}</div>`+
+        `<div class="value-row"><div class="value-odds">Cote: <b>${topBet.odd}</b> · Modèle: <b>${topBet.modelProb}%</b></div><span class="value-badge ${badgeCls}">${badgeIcon} +${topBet.edge}%</span></div>`+
+        `</div></div>`;
+    }).join("")+
+    `<div style="font-size:10px;color:#b0b8c8;margin:6px 0 14px;">Touche une carte pour aller directement au match dans la liste ci-dessous.</div>`;
+}
+
+// Scanne TOUS les matchs actuellement en direct (généralement peu nombreux à un instant donné,
+// contrairement à l'avant-match — pas besoin de limiter par lot) et fait remonter dans une section
+// dédiée ceux où un value bet a été détecté. Réutilise getLiveAnalysisForFixture, donc exactement
+// la même logique que le clic "Analyser" sur un match précis.
+async function scanLiveForValueBets(){
+  const btn=document.getElementById('scanLiveVBBtn');
+  const liveFixtures=allFixtures.filter(f=>isLive(f));
+  if(liveFixtures.length===0){ btn.textContent='🔍 Aucun match en direct pour le moment'; return; }
+  btn.disabled=true;
+  scannedLiveValueBets.clear(); // on repart de zéro à chaque scan : l'état d'un match live change vite
+  let found=0;
+  for(let i=0;i<liveFixtures.length;i++){
+    const fixture=liveFixtures[i];
+    btn.textContent=`🔍 Scan en cours... (${i+1}/${liveFixtures.length})`;
+    try{
+      const a=await getLiveAnalysisForFixture(fixture);
+      if(a.valueBets.length>0){
+        scannedLiveValueBets.set(fixture.fixture.id, {fixture:a.fixture, topBet:a.valueBets[0]});
+        found++;
+      }
+    }catch(e){ console.warn(`[pronos] Scan value bet en direct échoué pour fixture ${fixture.fixture.id} :`, e.message); }
+  }
+  btn.disabled=false;
+  btn.textContent=`🔍 Scanner les value bets (en direct) · ${found} trouvé${found>1?'s':''}`;
+  renderVBLiveHighlightSection();
+}
+function renderVBLiveHighlightSection(){
+  const el=document.getElementById('vbLiveHighlightSection');
+  if(!el) return;
+  if(currentTab!=="live"){ el.innerHTML=""; return; }
+  const found=[...scannedLiveValueBets.values()].filter(Boolean).sort((a,b)=>b.topBet.edge-a.topBet.edge);
+  if(found.length===0){ el.innerHTML=""; return; }
+  el.innerHTML=`<div style="font-size:12px;font-weight:800;color:#e63946;margin:4px 0 8px;">🎯 Value bets en direct trouvés (${found.length})</div>`+
+    `<div style="font-size:10px;color:#b08900;margin-bottom:8px;">⚠️ Non suivis par le tracker ROI, et les cotes peuvent être figées depuis l'avant-match plutôt que réellement mises à jour — à vérifier toi-même sur 1xBet avant d'agir.</div>`+
+    found.map(({fixture,topBet})=>{
+      const home=fixture.teams.home.name, away=fixture.teams.away.name;
+      const leagueLabel=`${countryFlag(fixture.league.country)} ${formatLeagueName(fixture.league.name,fixture.league.country)}`;
+      const badgeCls=topBet.edge>=10?'high':topBet.edge>=6?'mid':'low';
+      const badgeIcon=topBet.edge>=10?'🔥':topBet.edge>=6?'⚡':'';
+      const elapsed=fixture.fixture.status.elapsed;
+      const score=fixture.goals.home!==null?`${fixture.goals.home}-${fixture.goals.away}`:'';
+      return `<div class="league-group"><div class="card" style="cursor:pointer;" onclick="document.getElementById('fixtureCard_${fixture.fixture.id}')?.scrollIntoView({behavior:'smooth',block:'center'})">`+
+        `<div style="font-size:10px;font-weight:700;color:#1a3a6b;margin-bottom:2px;">${leagueLabel}${elapsed?` · ${elapsed}'`:''}</div>`+
+        `<div style="font-size:11px;color:#8a9ab8;margin-bottom:4px;">${home} ${score} ${away}</div>`+
         `<div style="font-size:13px;font-weight:800;margin-bottom:4px;">${topBet.market} : ${topBet.pick}</div>`+
         `<div class="value-row"><div class="value-odds">Cote: <b>${topBet.odd}</b> · Modèle: <b>${topBet.modelProb}%</b></div><span class="value-badge ${badgeCls}">${badgeIcon} +${topBet.edge}%</span></div>`+
         `</div></div>`;
@@ -1027,89 +1169,21 @@ async function showPredictions(fixture,container,btn) {
   try {
     const home=fixture.teams.home,away=fixture.teams.away;let html="";
     if(live) {
-      // Le score/minute affichés dans la liste viennent du dernier chargement global (toutes les 2
-      // minutes) — potentiellement dépassé. On récupère ce match précis en frais avant de calculer
-      // quoi que ce soit, pour éviter d'analyser un score qui n'est déjà plus le bon.
-      try{
-        const freshData=await apiGet(`/fixtures?id=${fixture.fixture.id}`);
-        const fresh=freshData && freshData[0];
-        if(fresh){
-          fixture=fresh; // remplace la version potentiellement périmée par la version fraîche
-          const idx=allFixtures.findIndex(f=>f.fixture.id===fresh.fixture.id);
-          if(idx>=0) allFixtures[idx]=fresh; // garde la liste globale cohérente si on la réaffiche
-        }
-      }catch(e){ console.warn(`[pronos] Rafraîchissement direct fixture ${fixture.fixture.id} échoué, score potentiellement pas à jour :`, e.message); }
-      const elapsed=fixture.fixture.status.elapsed??45,remaining=Math.max(0,90-elapsed);
-      const hG=fixture.goals.home??0,aG=fixture.goals.away??0;
-      let ls=null;
-      try{const sr=await apiGet(`/fixtures/statistics?fixture=${fixture.fixture.id}`);if(sr&&sr.length>=2){const gS=(ts,t)=>{const s=ts.statistics.find(s=>s.type===t);return s?(parseInt(s.value)||0):0;};const hS=sr.find(t=>t.team.id===home.id)||sr[0],aS=sr.find(t=>t.team.id===away.id)||sr[1];ls={hP:gS(hS,"Ball Possession")||50,aP:gS(aS,"Ball Possession")||50,hSh:gS(hS,"Total Shots"),aSh:gS(aS,"Total Shots"),hShOn:gS(hS,"Shots on Goal"),aShOn:gS(aS,"Shots on Goal"),hC:gS(hS,"Corner Kicks"),aC:gS(aS,"Corner Kicks"),hRed:gS(hS,"Red Cards"),aRed:gS(aS,"Red Cards")};}}catch(e){}
+      // Toute la logique (score frais, stats, cotes, modèle projeté, value bets) vit maintenant dans
+      // getLiveAnalysisForFixture, réutilisée aussi par le scan groupé "🔍 Scanner les value bets
+      // (en direct)" — voir ce commentaire là-bas pour le détail de chaque étape.
+      const liveA=await getLiveAnalysisForFixture(fixture);
+      fixture=liveA.fixture; // remplace la version potentiellement périmée par la version fraîche
+      const idx=allFixtures.findIndex(f=>f.fixture.id===fixture.fixture.id);
+      if(idx>=0) allFixtures[idx]=fixture; // garde la liste globale cohérente si on la réaffiche
+      const {elapsed,remaining,hG,aG,ls,source,factors,liveParsed,valueBets:liveValueBets}=liveA;
+      const {pH,pD,pA,pBTTS,pWTNH,pWTNA,pCSH,pCSA,pOddTotal,pEvenTotal,totalDist,lhRem,laRem}=liveA.live;
       html=`<div class="live-header-note">🔴 ${elapsed}' | Score: ${hG}-${aG}</div>`;
       if(ls)html+=`<div class="stats-box">📊 <b>${home.name}</b>: ${ls.hP}% poss · ${ls.hSh} tirs (${ls.hShOn} cadrés) · ${ls.hC} corners${ls.hRed>0?` · 🟥 ${ls.hRed}`:''}<br>📊 <b>${away.name}</b>: ${ls.aP}% poss · ${ls.aSh} tirs (${ls.aShOn} cadrés) · ${ls.aC} corners${ls.aRed>0?` · 🟥 ${ls.aRed}`:''}</div>`;
-      // La possession seule est un indicateur faible de qui menace vraiment le but adverse ; les
-      // tirs cadrés le sont bien plus. On combine les trois signaux déjà récupérés (avant, seule la
-      // possession était utilisée, les tirs et corners n'étaient affichés que sans influencer le calcul).
-      let dom=0;
-      if(ls){
-        const possDiff=(ls.hP-50)/100;
-        const shotsOnDiff=Math.max(-0.5,Math.min(0.5,(ls.hShOn-ls.aShOn)/8));
-        const cornersDiff=Math.max(-0.5,Math.min(0.5,(ls.hC-ls.aC)/12));
-        dom=possDiff*0.2+shotsOnDiff*0.55+cornersDiff*0.25;
-      }
-      // On réutilise le VRAI modèle calibré (cotes si dispo, sinon forme récente) au lieu d'une
-      // formule à paliers fixes — sans ça, deux matchs à score/minute identiques donnaient toujours
-      // exactement la même prédiction, peu importe la force réelle des équipes.
-      let baseLh, baseLa, source, liveParsed=null;
-      try{
-        const oddsData=await apiGet(`/odds?fixture=${fixture.fixture.id}&bookmaker=${BOOKMAKER_1XBET}`);
-        const parsed=parseOdds1xbet(oddsData,home.name,away.name);
-        if(parsed && parsed.home1x2){
-          liveParsed=parsed;
-          const rawH=oddsToProb(parsed.home1x2),rawD=oddsToProb(parsed.draw1x2||2),rawA=oddsToProb(parsed.away1x2);
-          const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
-          ({lh:baseLh,la:baseLa}=estimateLambdas(nH,nD,nA));
-          source='cotes 1xBet';
-        } else {
-          // Diagnostic : distingue "l'API n'a renvoyé aucune cote 1xBet pour ce match" (cas normal,
-          // fréquent en direct) d'une vraie erreur technique — avant, les deux cas étaient invisibles.
-          console.warn(`[pronos] Pas de cotes 1xBet en direct pour ${home.name} vs ${away.name} (fixture ${fixture.fixture.id}) : ${oddsData&&oddsData.length?`réponse reçue mais aucun marché 1X2 exploitable (bookmaker ${BOOKMAKER_1XBET} absent de la réponse ou format inattendu)`:'réponse vide de l\'API pour ce bookmaker sur ce match'}. Repli sur la forme récente.`);
-        }
-      }catch(e){
-        console.warn(`[pronos] Échec technique de récupération des cotes en direct pour ${home.name} vs ${away.name} (fixture ${fixture.fixture.id}) :`, e.message);
-      }
-      // Explicabilité simplifiée : liste des facteurs qui ont concrètement influencé le calcul,
-      // avec un sens (📈/📉) et une ampleur approximative — pas un vrai calcul de type SHAP (ça
-      // demanderait un modèle de Machine Learning qu'on n'a pas), juste une trace transparente des
-      // ajustements réellement appliqués au-dessus de la base cotes/forme.
-      const factors=[];
-      if(baseLh===undefined){
-        try{
-          const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id,fixture.fixture.date),getTeamForm(away.id,fixture.fixture.date)]);
-          baseLh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
-          baseLa=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
-          // Effet fatigue conservateur et plafonné : l'ampleur exacte est débattue dans la littérature,
-          // donc on limite volontairement l'impact à -8% max plutôt que de deviner un poids agressif.
-          if(homeForm.restDays!==null && homeForm.restDays<3){ baseLh*=0.92; factors.push({label:`${home.name} : moins de 3 jours de repos`, dir:'📉'}); }
-          if(awayForm.restDays!==null && awayForm.restDays<3){ baseLa*=0.92; factors.push({label:`${away.name} : moins de 3 jours de repos`, dir:'📉'}); }
-          source='forme récente';
-        }catch(e){ console.warn(`[pronos] Forme indisponible pour fixture ${fixture.fixture.id}, repli sur moyenne générique :`, e.message); }
-      }
-      if(baseLh===undefined){ baseLh=1.35; baseLa=1.1; source='moyenne générique (aucune donnée)'; }
-      // Une expulsion réduit fortement la capacité offensive de l'équipe en infériorité numérique et
-      // facilite légèrement celle de l'adversaire (effet bien documenté, environ -35% d'attaque par
-      // joueur en moins). On l'applique sur les lambdas AVANT projection, pas seulement en affichage.
-      if(ls && ((ls.hRed||0)>0 || (ls.aRed||0)>0)){
-        const hRed=ls.hRed||0, aRed=ls.aRed||0;
-        baseLh *= Math.pow(0.65, hRed) * Math.pow(1.12, aRed);
-        baseLa *= Math.pow(0.65, aRed) * Math.pow(1.12, hRed);
-        if(hRed>0) factors.push({label:`${home.name} : ${hRed} carton${hRed>1?'s':''} rouge${hRed>1?'s':''}`, dir:'📉'});
-        if(aRed>0) factors.push({label:`${away.name} : ${aRed} carton${aRed>1?'s':''} rouge${aRed>1?'s':''}`, dir:'📉'});
-      }
-      if(Math.abs(dom)>0.05) factors.push({label:`${dom>0?home.name:away.name} plus dangereux (tirs cadrés/corners)`, dir:'📈'});
-      const {pH,pD,pA,pBTTS,pWTNH,pWTNA,pCSH,pCSA,pOddTotal,pEvenTotal,totalDist,lhRem,laRem}=computeLiveProbabilities(baseLh,baseLa,hG,aG,remaining,dom);
       html+=`<div style="font-size:10px;color:#8a9ab8;margin-bottom:6px;">Basé sur : ${source}, projeté sur ${remaining} min restantes</div>`;
       if(factors.length) html+=`<div style="font-size:10px;color:#4a6090;margin-bottom:8px;">${factors.map(f=>`${f.dir} ${f.label}`).join('<br>')}</div>`;
       html+=`<div style="font-size:11px;font-weight:700;color:#1a3a6b;margin-bottom:6px;">📊 Probabilités en temps réel</div>`;
-      [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}].sort((a,b)=>b.p-a.p).forEach(r=>{html+=renderProbRow(r.label,r.p);});
+      [{label:`Victoire ${home.name}`,p:pH},{label:'Match nul',p:pD},{label:`Victoire ${away.name}`,p:pA}].sort((r1,r2)=>r2.p-r1.p).forEach(r=>{html+=renderProbRow(r.label,r.p);});
       const tG=hG+aG;
       // On affiche toujours le PROCHAIN seuil pas encore atteint (tG+0.5), jamais un seuil fixe à 2.5 :
       // si 4 buts sont déjà marqués, prédire "Plus de 2.5 buts" à 100% n'est pas une prédiction, c'est
@@ -1117,8 +1191,6 @@ async function showPredictions(fixture,container,btn) {
       const nextLine=tG+0.5;
       const pOverNext=liveOverProb(totalDist, tG, nextLine);
       html+=`<div style="padding:6px 0;border-top:1px solid #f0f2f5"><div style="font-size:13px;font-weight:700">${pOverNext>=0.5?`Plus de ${nextLine} buts au total`:`Moins de ${nextLine} buts au total`}</div>${confidenceBarHTML(pOverNext>=0.5?pOverNext:1-pOverNext)}</div>`;
-      // Marchés supplémentaires (mêmes que l'avant-match), calculés à partir de la même grille de
-      // scores projetée — pas de nouvelle logique, juste plus de lectures du même modèle.
       html+=renderProbSectionTitle('Autres marchés');
       [
         {label:`${home.name} ou Nul`, p:pH+pD},
@@ -1134,18 +1206,11 @@ async function showPredictions(fixture,container,btn) {
       ].forEach(r=>{html+=renderProbRow(r.label,r.p);});
       html+=renderProbSectionTitle('Score final le plus probable');
       getTopLiveScorelines(lhRem,laRem,hG,aG,3).forEach(s=>{html+=renderProbRow(`${s.h}-${s.a}`,s.p);});
-      // Détection de value bets EN DIRECT : réutilise le même mécanisme que l'avant-match (findValueBets),
-      // sur les mêmes cotes 1xBet déjà récupérées ci-dessus (bookmaker=8 explicitement filtré dans la
-      // requête, donc l'attribution est fiable — contrairement à l'ancien endpoint générique "cotes
-      // live" écarté au tout début du projet pour manque d'attribution). Non suivi par le tracker ROI
-      // (qui ne couvre que l'avant-match) : à prendre avec prudence supplémentaire, voir l'avertissement.
-      // On désactive carrément l'affichage dans les 10 dernières minutes : confirmé en conditions
-      // réelles (match 3-0 avec expulsion à la 89e) que 1xBet retire purement et simplement un marché
-      // devenu quasi certain plutôt que de le geler — la cote qu'on récupère alors n'existe plus du
-      // tout côté bookmaker, donc l'edge affiché serait entièrement fictif.
+      // Détection de value bets EN DIRECT : non suivie par le tracker ROI (qui ne couvre que
+      // l'avant-match) et désactivée dans les 10 dernières minutes (1xBet retire souvent les
+      // marchés devenus évidents — confirmé en conditions réelles) : la logique vit dans
+      // getLiveAnalysisForFixture, ici on ne fait qu'afficher ce qu'elle a trouvé.
       if(liveParsed && remaining>10){
-        const liveModelProbs={pH,pD,pA,pBTTS,pWTNH,pWTNA,pCSH,pCSA,pOddTotal,pEvenTotal};
-        const liveValueBets=findValueBets(liveModelProbs,liveParsed,home.name,away.name);
         if(liveValueBets.length>0){
           html+=`<div style="font-size:10px;font-weight:700;color:#8a9ab8;margin:10px 0 4px;text-transform:uppercase;letter-spacing:0.5px;">🎯 Value bets vs 1xBet (en direct)</div>`;
           html+=`<div style="font-size:10px;color:#b08900;margin-bottom:8px;">⚠️ Pas suivi par le tracker ROI, et la cote peut être figée depuis l'avant-match plutôt que réellement mise à jour en direct — à vérifier toi-même sur 1xBet avant d'agir.</div>`;
@@ -1297,7 +1362,10 @@ function switchTab(tab) {
   document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)).length})`;
   const scanBtn=document.getElementById("scanVBBtn");
   scanBtn.style.display=tab==="upcoming"?"flex":"none";
+  const scanLiveBtn=document.getElementById("scanLiveVBBtn");
+  scanLiveBtn.style.display=tab==="live"?"flex":"none";
   renderVBHighlightSection();
+  renderVBLiveHighlightSection();
 }
 
 async function loadFixtures(silent=false) {
