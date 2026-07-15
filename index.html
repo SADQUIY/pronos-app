@@ -104,7 +104,7 @@
     <button class="tab-btn" id="tabDone" onclick="switchTab('done')">TERMINÉS</button>
   </div>
 </div>
-<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-14-error-net</div>
+<div style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-14-safe-bets</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
@@ -683,74 +683,103 @@ function getTopLiveScorelines(lhRem, laRem, hG, aG, n=3) {
   return list.slice(0,n);
 }
 
-function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
-  const valueBets=[];
-  function checkValue(market,pick,modelProb,odd1xbet){
+// Seuil de probabilité modèle à partir duquel un pari est considéré "sûr" (quasi certain), au sens
+// où Youssef l'utilise : l'objectif principal est la probabilité de réalisation, pas la cote ou
+// l'edge. Un pari "sûr" n'a donc pas besoin de dépasser le seuil d'edge de 3% utilisé pour les
+// value bets — il peut très bien être un favori déjà bien pricé par le marché (edge proche de 0).
+const SAFE_BET_THRESHOLD = 0.85;
+
+// Calcule, pour TOUS les marchés couverts par l'app (1X2, Double Chance, Total buts, BTTS,
+// mi-temps, cage inviolée, pair/impair...), la probabilité modèle et les métriques associées
+// (implicite, edge, EV, ¼ Kelly), sans filtrer sur un seuil particulier. Factorisé pour que
+// findValueBets (filtre par edge) et findSafeBets (filtre par probabilité) partagent exactement la
+// même liste de marchés et le même calcul — évite que les deux divergent si un marché est ajouté
+// plus tard à l'un des deux mais pas l'autre.
+function evaluateAllMarkets(modelProbs, odds1xbet, homeName, awayName) {
+  const results=[];
+  function add(market,pick,modelProb,odd1xbet){
     if(!odd1xbet||odd1xbet<=1)return;
     const impliedProb=oddsToProb(odd1xbet), edge=modelProb-impliedProb;
-    if(edge>0.03){
-      // EV : gain moyen attendu par unité misée, selon le modèle. Ex: EV=0.15 veut dire que pour
-      // chaque unité misée, on s'attend à gagner 0.15 unité en moyenne SI le modèle a raison.
-      const ev=modelProb*odd1xbet-1;
-      // Kelly plein (fraction du capital à miser en théorie) est souvent trop agressif en pratique
-      // (sensible à la moindre erreur de modèle) — on affiche le quart de Kelly, un compromis standard
-      // pour limiter la casse si le modèle se trompe, plafonné à 5% du capital par pari par prudence.
-      const kellyFull=(modelProb*odd1xbet-1)/(odd1xbet-1);
-      const kellyQuarter=Math.max(0,Math.min(0.05,kellyFull*0.25));
-      valueBets.push({market,pick,modelProb:Math.round(modelProb*100),impliedProb:Math.round(impliedProb*100),odd:odd1xbet,edge:Math.round(edge*100),ev:Math.round(ev*100)/100,kellyQuarter:Math.round(kellyQuarter*1000)/10});
-    }
+    // EV : gain moyen attendu par unité misée, selon le modèle. Ex: EV=0.15 veut dire que pour
+    // chaque unité misée, on s'attend à gagner 0.15 unité en moyenne SI le modèle a raison.
+    const ev=modelProb*odd1xbet-1;
+    // Kelly plein (fraction du capital à miser en théorie) est souvent trop agressif en pratique
+    // (sensible à la moindre erreur de modèle) — on affiche le quart de Kelly, un compromis standard
+    // pour limiter la casse si le modèle se trompe, plafonné à 5% du capital par pari par prudence.
+    const kellyFull=(modelProb*odd1xbet-1)/(odd1xbet-1);
+    const kellyQuarter=Math.max(0,Math.min(0.05,kellyFull*0.25));
+    results.push({market,pick,modelProb,impliedProb,odd:odd1xbet,edge,ev,kellyQuarter});
   }
   const o=odds1xbet;
-  if(o.home1x2)checkValue('Résultat (1X2)',`Victoire ${homeName}`,modelProbs.pH,o.home1x2);
-  if(o.draw1x2)checkValue('Résultat (1X2)','Match nul',modelProbs.pD,o.draw1x2);
-  if(o.away1x2)checkValue('Résultat (1X2)',`Victoire ${awayName}`,modelProbs.pA,o.away1x2);
-  if(o.dc1x)checkValue('Double Chance',`${homeName} ou Nul`,modelProbs.pH+modelProbs.pD,o.dc1x);
-  if(o.dc12)checkValue('Double Chance',`${homeName} ou ${awayName}`,modelProbs.pH+modelProbs.pA,o.dc12);
-  if(o.dcx2)checkValue('Double Chance',`Nul ou ${awayName}`,modelProbs.pD+modelProbs.pA,o.dcx2);
-  if(o.over05)checkValue('Total buts','Over 0.5',modelProbs.pO05,o.over05);
-  if(o.under05)checkValue('Total buts','Under 0.5',1-modelProbs.pO05,o.under05);
-  if(o.over15)checkValue('Total buts','Over 1.5',modelProbs.pO15,o.over15);
-  if(o.under15)checkValue('Total buts','Under 1.5',1-modelProbs.pO15,o.under15);
-  if(o.over25)checkValue('Total buts','Over 2.5',modelProbs.pO25,o.over25);
-  if(o.under25)checkValue('Total buts','Under 2.5',1-modelProbs.pO25,o.under25);
-  if(o.over35)checkValue('Total buts','Over 3.5',modelProbs.pO35,o.over35);
-  if(o.under35)checkValue('Total buts','Under 3.5',1-modelProbs.pO35,o.under35);
-  if(o.bttsYes)checkValue('Les deux équipes marquent','Oui',modelProbs.pBTTS,o.bttsYes);
-  if(o.bttsNo)checkValue('Les deux équipes marquent','Non',1-modelProbs.pBTTS,o.bttsNo);
-  if(o.wtnHome)checkValue(`${homeName} gagne sans encaisser`,'Oui',modelProbs.pWTNH,o.wtnHome);
-  if(o.wtnAway)checkValue(`${awayName} gagne sans encaisser`,'Oui',modelProbs.pWTNA,o.wtnAway);
-  if(o.scoreDraw)checkValue('Match nul avec buts','Oui',modelProbs.pSD,o.scoreDraw);
-  if(o.nilNil)checkValue('0-0','Oui',modelProbs.pNilNil,o.nilNil);
-  if(o.ht_over05)checkValue('1ère MT Over 0.5','Oui',modelProbs.p1HO05,o.ht_over05);
-  if(o.ht_under05)checkValue('1ère MT Under 0.5','Oui',1-modelProbs.p1HO05,o.ht_under05);
-  if(o.ht_over15)checkValue('1ère MT Over 1.5','Oui',modelProbs.p1HO15,o.ht_over15);
-  if(o.ht_under15)checkValue('1ère MT Under 1.5','Oui',1-modelProbs.p1HO15,o.ht_under15);
-  if(o.sh_over05)checkValue('2ème MT Over 0.5','Oui',modelProbs.p2HO05,o.sh_over05);
-  if(o.sh_over15)checkValue('2ème MT Over 1.5','Oui',modelProbs.p2HO15,o.sh_over15);
-  if(o.homeScore05)checkValue(`${homeName} marque`,'Oui',modelProbs.pHScore05,o.homeScore05);
-  if(o.awayScore05)checkValue(`${awayName} marque`,'Oui',modelProbs.pAScore05,o.awayScore05);
-  // --- Nouveaux marchés (mi-temps, cage inviolée, pair/impair, gagne les 2 MT) : les noms de marché
-  // ci-dessous ("First Half Winner", "Second Half Winner", "Odd/Even", "Team Clean Sheet", "To Win
-  // Both Halves") suivent la convention habituelle d'API-Football, mais n'ont pas pu être vérifiés
+  if(o.home1x2)add('Résultat (1X2)',`Victoire ${homeName}`,modelProbs.pH,o.home1x2);
+  if(o.draw1x2)add('Résultat (1X2)','Match nul',modelProbs.pD,o.draw1x2);
+  if(o.away1x2)add('Résultat (1X2)',`Victoire ${awayName}`,modelProbs.pA,o.away1x2);
+  if(o.dc1x)add('Double Chance',`${homeName} ou Nul`,modelProbs.pH+modelProbs.pD,o.dc1x);
+  if(o.dc12)add('Double Chance',`${homeName} ou ${awayName}`,modelProbs.pH+modelProbs.pA,o.dc12);
+  if(o.dcx2)add('Double Chance',`Nul ou ${awayName}`,modelProbs.pD+modelProbs.pA,o.dcx2);
+  if(o.over05)add('Total buts','Over 0.5',modelProbs.pO05,o.over05);
+  if(o.under05)add('Total buts','Under 0.5',1-modelProbs.pO05,o.under05);
+  if(o.over15)add('Total buts','Over 1.5',modelProbs.pO15,o.over15);
+  if(o.under15)add('Total buts','Under 1.5',1-modelProbs.pO15,o.under15);
+  if(o.over25)add('Total buts','Over 2.5',modelProbs.pO25,o.over25);
+  if(o.under25)add('Total buts','Under 2.5',1-modelProbs.pO25,o.under25);
+  if(o.over35)add('Total buts','Over 3.5',modelProbs.pO35,o.over35);
+  if(o.under35)add('Total buts','Under 3.5',1-modelProbs.pO35,o.under35);
+  if(o.bttsYes)add('Les deux équipes marquent','Oui',modelProbs.pBTTS,o.bttsYes);
+  if(o.bttsNo)add('Les deux équipes marquent','Non',1-modelProbs.pBTTS,o.bttsNo);
+  if(o.wtnHome)add(`${homeName} gagne sans encaisser`,'Oui',modelProbs.pWTNH,o.wtnHome);
+  if(o.wtnAway)add(`${awayName} gagne sans encaisser`,'Oui',modelProbs.pWTNA,o.wtnAway);
+  if(o.scoreDraw)add('Match nul avec buts','Oui',modelProbs.pSD,o.scoreDraw);
+  if(o.nilNil)add('0-0','Oui',modelProbs.pNilNil,o.nilNil);
+  if(o.ht_over05)add('1ère MT Over 0.5','Oui',modelProbs.p1HO05,o.ht_over05);
+  if(o.ht_under05)add('1ère MT Under 0.5','Oui',1-modelProbs.p1HO05,o.ht_under05);
+  if(o.ht_over15)add('1ère MT Over 1.5','Oui',modelProbs.p1HO15,o.ht_over15);
+  if(o.ht_under15)add('1ère MT Under 1.5','Oui',1-modelProbs.p1HO15,o.ht_under15);
+  if(o.sh_over05)add('2ème MT Over 0.5','Oui',modelProbs.p2HO05,o.sh_over05);
+  if(o.sh_over15)add('2ème MT Over 1.5','Oui',modelProbs.p2HO15,o.sh_over15);
+  if(o.homeScore05)add(`${homeName} marque`,'Oui',modelProbs.pHScore05,o.homeScore05);
+  if(o.awayScore05)add(`${awayName} marque`,'Oui',modelProbs.pAScore05,o.awayScore05);
+  // --- Marchés mi-temps, cage inviolée, pair/impair, gagne les 2 MT : les noms de marché ci-dessous
+  // ("First Half Winner", "Second Half Winner", "Odd/Even", "Team Clean Sheet", "To Win Both
+  // Halves") suivent la convention habituelle d'API-Football, mais n'ont pas pu être vérifiés
   // contre une vraie réponse de l'API dans cette session (pas d'accès réseau ici). Si un de ces
-  // marchés ne remonte jamais de value bet alors que tu sais que 1xBet propose la cote, ouvre le
+  // marchés ne remonte jamais de résultat alors que tu sais que 1xBet propose la cote, ouvre le
   // journal 🐛 Debug sur un match qui a des cotes O/U (le diagnostic liste les clés reçues) et
   // dis-moi le nom exact du marché — un seul mot à corriger dans parseOdds1xbet suffira.
-  if(o.h1Home)checkValue('Vainqueur 1ère MT',`${homeName}`,modelProbs.p1HH,o.h1Home);
-  if(o.h1Draw)checkValue('Vainqueur 1ère MT','Nul',modelProbs.p1HD,o.h1Draw);
-  if(o.h1Away)checkValue('Vainqueur 1ère MT',`${awayName}`,modelProbs.p1HA,o.h1Away);
-  if(o.h2Home)checkValue('Vainqueur 2ème MT',`${homeName}`,modelProbs.p2HH,o.h2Home);
-  if(o.h2Draw)checkValue('Vainqueur 2ème MT','Nul',modelProbs.p2HD,o.h2Draw);
-  if(o.h2Away)checkValue('Vainqueur 2ème MT',`${awayName}`,modelProbs.p2HA,o.h2Away);
-  if(o.oddTotal)checkValue('Total buts pair/impair','Impair',modelProbs.pOddTotal,o.oddTotal);
-  if(o.evenTotal)checkValue('Total buts pair/impair','Pair',modelProbs.pEvenTotal,o.evenTotal);
-  if(o.csHome)checkValue(`${homeName} garde sa cage inviolée`,'Oui',modelProbs.pCSH,o.csHome);
-  if(o.csAway)checkValue(`${awayName} garde sa cage inviolée`,'Oui',modelProbs.pCSA,o.csAway);
-  if(o.wbHome)checkValue(`${homeName} gagne les 2 mi-temps`,'Oui',modelProbs.pWBH,o.wbHome);
-  if(o.wbAway)checkValue(`${awayName} gagne les 2 mi-temps`,'Oui',modelProbs.pWBA,o.wbAway);
+  if(o.h1Home)add('Vainqueur 1ère MT',`${homeName}`,modelProbs.p1HH,o.h1Home);
+  if(o.h1Draw)add('Vainqueur 1ère MT','Nul',modelProbs.p1HD,o.h1Draw);
+  if(o.h1Away)add('Vainqueur 1ère MT',`${awayName}`,modelProbs.p1HA,o.h1Away);
+  if(o.h2Home)add('Vainqueur 2ème MT',`${homeName}`,modelProbs.p2HH,o.h2Home);
+  if(o.h2Draw)add('Vainqueur 2ème MT','Nul',modelProbs.p2HD,o.h2Draw);
+  if(o.h2Away)add('Vainqueur 2ème MT',`${awayName}`,modelProbs.p2HA,o.h2Away);
+  if(o.oddTotal)add('Total buts pair/impair','Impair',modelProbs.pOddTotal,o.oddTotal);
+  if(o.evenTotal)add('Total buts pair/impair','Pair',modelProbs.pEvenTotal,o.evenTotal);
+  if(o.csHome)add(`${homeName} garde sa cage inviolée`,'Oui',modelProbs.pCSH,o.csHome);
+  if(o.csAway)add(`${awayName} garde sa cage inviolée`,'Oui',modelProbs.pCSA,o.csAway);
+  if(o.wbHome)add(`${homeName} gagne les 2 mi-temps`,'Oui',modelProbs.pWBH,o.wbHome);
+  if(o.wbAway)add(`${awayName} gagne les 2 mi-temps`,'Oui',modelProbs.pWBA,o.wbAway);
   const htftKeys={'1/1':`${homeName}/${homeName}`,'1/X':`${homeName}/Nul`,'X/X':'Nul/Nul','X/1':`Nul/${homeName}`,'X/2':`Nul/${awayName}`,'2/2':`${awayName}/${awayName}`,'2/X':`${awayName}/Nul`,'2/1':`${awayName}/${homeName}`,'1/2':`${homeName}/${awayName}`};
-  Object.entries(htftKeys).forEach(([key,label])=>{if(o[`htft_${key}`])checkValue('HT-FT',label,modelProbs.htftMap[key]||0,o[`htft_${key}`]);});
-  return valueBets.sort((a,b)=>b.edge-a.edge);
+  Object.entries(htftKeys).forEach(([key,label])=>{if(o[`htft_${key}`])add('HT-FT',label,modelProbs.htftMap[key]||0,o[`htft_${key}`]);});
+  return results;
+}
+function roundBetFields(r){
+  return {market:r.market, pick:r.pick, modelProb:Math.round(r.modelProb*100), impliedProb:Math.round(r.impliedProb*100), odd:r.odd, edge:Math.round(r.edge*100), ev:Math.round(r.ev*100)/100, kellyQuarter:Math.round(r.kellyQuarter*1000)/10};
+}
+function findValueBets(modelProbs, odds1xbet, homeName, awayName) {
+  return evaluateAllMarkets(modelProbs, odds1xbet, homeName, awayName)
+    .filter(r=>r.edge>0.03)
+    .map(roundBetFields)
+    .sort((a,b)=>b.edge-a.edge);
+}
+// Paris "sûrs" : probabilité modèle très élevée (voir SAFE_BET_THRESHOLD), sans exiger d'edge —
+// un favori déjà bien pricé par 1xBet (edge proche de 0) est un candidat parfaitement valable ici,
+// contrairement à findValueBets qui l'aurait ignoré faute d'edge >3%. Triés par probabilité
+// décroissante (le plus sûr d'abord), pas par edge.
+function findSafeBets(modelProbs, odds1xbet, homeName, awayName) {
+  return evaluateAllMarkets(modelProbs, odds1xbet, homeName, awayName)
+    .filter(r=>r.modelProb>=SAFE_BET_THRESHOLD)
+    .map(roundBetFields)
+    .sort((a,b)=>b.modelProb-a.modelProb);
 }
 
 function parseOdds1xbet(oddsData, homeName, awayName) {
@@ -788,6 +817,17 @@ function renderValueBet(vb) {
   else if(vb.edge>=6){cls='value-mid';badgeCls='mid';label=`⚡ +${vb.edge}%`;}
   else{cls='value-low';badgeCls='low';label=`+${vb.edge}%`;}
   return `<div class="value-item ${cls}"><div class="value-market">${vb.market}</div><div class="value-pick">${vb.pick}</div><div class="value-row"><div class="value-odds">Cote: <b>${vb.odd}</b> · Implicite: <b>${vb.impliedProb}%</b> · Modèle: <b>${vb.modelProb}%</b></div><span class="value-badge ${badgeCls}">${label}</span></div><div class="value-odds" style="margin-top:4px;">EV: <b>${vb.ev>=0?'+':''}${vb.ev}</b>/unité · Mise suggérée (¼ Kelly): <b>${vb.kellyQuarter}%</b> du capital</div></div>`;
+}
+// Affichage d'un pari "sûr" (voir SAFE_BET_THRESHOLD) : thème bleu, volontairement différent des
+// couleurs vert/orange/bleu-clair utilisées pour les tranches d'edge des value bets, pour qu'on ne
+// confonde jamais "probabilité très élevée" avec "edge élevé" — ce sont deux choses différentes.
+// Un pari sûr n'a pas forcément d'edge (l'edge peut même être négatif, ce qui est normal si 1xBet
+// price déjà bien ce favori) ; le bandeau EV/edge n'est affiché que quand il y a un edge positif.
+function renderSafeBet(sb) {
+  const eddgeLine = sb.edge>0
+    ? `<div class="value-odds" style="margin-top:4px;">Edge: <b>+${sb.edge}%</b> · EV: <b>${sb.ev>=0?'+':''}${sb.ev}</b>/unité</div>`
+    : `<div class="value-odds" style="margin-top:4px;color:#8a9ab8;">Pas d'edge particulier ici (cote déjà proche du juste prix) — un pari sûr, pas un value bet.</div>`;
+  return `<div class="value-item" style="border-left-color:#1a5276;background:#eaf2f8;"><div class="value-market">${sb.market}</div><div class="value-pick">${sb.pick}</div><div class="value-row"><div class="value-odds">Cote: <b>${sb.odd}</b> · Implicite: <b>${sb.impliedProb}%</b></div><span class="value-badge" style="background:#d6eaf8;color:#1a5276;">🛡️ ${sb.modelProb}%</span></div>${eddgeLine}</div>`;
 }
 
 function confidenceBarHTML(v) {
@@ -937,7 +977,7 @@ async function getValueBetsForFixture(fixture) {
   let oddsData=null;
   try{ oddsData=await apiGet(`/odds?fixture=${fixture.fixture.id}&bookmaker=${BOOKMAKER_1XBET}`); }catch(e){}
   const parsed=parseOdds1xbet(oddsData,home.name,away.name);
-  if(!parsed||!parsed.home1x2) return {parsed:null, modelProbs:null, valueBets:[]};
+  if(!parsed||!parsed.home1x2) return {parsed:null, modelProbs:null, valueBets:[], safeBets:[]};
   const rawH=oddsToProb(parsed.home1x2),rawD=oddsToProb(parsed.draw1x2||2),rawA=oddsToProb(parsed.away1x2);
   const [nH,nD,nA]=normalizeProbabilities([rawH,rawD,rawA]);
   const {lh,la}=estimateLambdas(nH,nD,nA);
@@ -961,7 +1001,8 @@ async function getValueBetsForFixture(fixture) {
     console.warn(`[pronos] Diag Over/Under ${home.name} vs ${away.name} : cibles=[${overTargets.map(t=>`O${t.line}=${(t.p*100).toFixed(0)}%`).join(', ')}] → modèle=[O0.5=${(modelProbs.pO05*100).toFixed(0)}%, O1.5=${(modelProbs.pO15*100).toFixed(0)}%, O2.5=${(modelProbs.pO25*100).toFixed(0)}%, O3.5=${(modelProbs.pO35*100).toFixed(0)}%] cotes brutes=[${['over05','under05','over15','under15','over25','under25','over35','under35'].map(k=>`${k}=${parsed[k]||'?'}`).join(', ')}]`);
   }
   const valueBets=findValueBets(modelProbs,parsed,home.name,away.name);
-  return {parsed, modelProbs, valueBets, lh, la, goalLh, goalLa};
+  const safeBets=findSafeBets(modelProbs,parsed,home.name,away.name);
+  return {parsed, modelProbs, valueBets, safeBets, lh, la, goalLh, goalLa};
 }
 
 // Détecte si les cotes 1xBet récupérées "en direct" sont vraisemblablement PÉRIMÉES (encore les
@@ -1290,7 +1331,7 @@ async function showPredictions(fixture,container,btn) {
       }catch(e){ console.warn(`[pronos] Contexte additionnel indisponible pour fixture ${fixture.fixture.id} :`, e.message); }
     } else {
       html=`<div class="odds-header">🎯 Value Bets vs 1xBet</div>`;
-      const {parsed, modelProbs, valueBets, lh, la, goalLh, goalLa}=await getValueBetsForFixture(fixture);
+      const {parsed, modelProbs, valueBets, safeBets, lh, la, goalLh, goalLa}=await getValueBetsForFixture(fixture);
       if(!parsed||!parsed.home1x2){
         try{
           const [homeForm,awayForm]=await Promise.all([getTeamForm(home.id,fixture.fixture.date),getTeamForm(away.id,fixture.fixture.date)]);
@@ -1340,6 +1381,15 @@ async function showPredictions(fixture,container,btn) {
             html+=restBets.map(renderValueBet).join("");
           }
         }
+        // --- Paris "les plus sûrs" (SAFE_BET_THRESHOLD, actuellement 85%) : section séparée du
+        // classement par edge ci-dessus. L'objectif ici n'est pas de trouver un edge mais un marché
+        // quasi certain de se réaliser, quitte à ce que 1xBet le price déjà correctement (edge ~0).
+        html+=`<div style="font-size:12px;font-weight:800;color:#1a5276;margin:14px 0 8px;">🛡️ Paris les plus sûrs (${Math.round(SAFE_BET_THRESHOLD*100)}%+)</div>`;
+        if(safeBets.length===0){
+          html+=`<div class="no-odds">Aucun marché à ${Math.round(SAFE_BET_THRESHOLD*100)}%+ trouvé par le modèle pour ce match — pas d'issue jugée assez sûre.</div>`;
+        } else {
+          html+=safeBets.map(renderSafeBet).join("");
+        }
         // --- Panneau "Probabilités du modèle" étendu : avant, seulement 5 lignes (1X2, BTTS, Over
         // 2.5) étaient affichées alors que le modèle calcule déjà beaucoup plus (voir
         // computeModelProbabilities). Regroupé par catégorie pour rester lisible sur mobile.
@@ -1352,106 +1402,4 @@ async function showPredictions(fixture,container,btn) {
         html+=renderProbSectionTitle('Équipes');
         [{label:`${home.name} marque`,p:modelProbs.pHScore05},{label:`${away.name} marque`,p:modelProbs.pAScore05},{label:`${home.name} gagne sans encaisser`,p:modelProbs.pWTNH},{label:`${away.name} gagne sans encaisser`,p:modelProbs.pWTNA},{label:`${home.name} garde sa cage inviolée`,p:modelProbs.pCSH},{label:`${away.name} garde sa cage inviolée`,p:modelProbs.pCSA}].forEach(r=>{html+=renderProbRow(r.label,r.p);});
         html+=renderProbSectionTitle('Mi-temps');
-        [{label:`Vainqueur 1ère MT : ${home.name}`,p:modelProbs.p1HH},{label:'Vainqueur 1ère MT : Nul',p:modelProbs.p1HD},{label:`Vainqueur 1ère MT : ${away.name}`,p:modelProbs.p1HA},{label:`Vainqueur 2ème MT : ${home.name}`,p:modelProbs.p2HH},{label:'Vainqueur 2ème MT : Nul',p:modelProbs.p2HD},{label:`Vainqueur 2ème MT : ${away.name}`,p:modelProbs.p2HA},{label:'But en 1ère MT (+0.5)',p:modelProbs.p1HO05},{label:'But en 2ème MT (+0.5)',p:modelProbs.p2HO05},{label:'BTTS en 1ère MT',p:modelProbs.pBTTS1H},{label:'BTTS en 2ème MT',p:modelProbs.pBTTS2H},{label:`${home.name} gagne les 2 mi-temps`,p:modelProbs.pWBH},{label:`${away.name} gagne les 2 mi-temps`,p:modelProbs.pWBA},{label:'Match nul aux 2 mi-temps',p:modelProbs.pDB}].forEach(r=>{html+=renderProbRow(r.label,r.p);});
-        html+=renderProbSectionTitle('Score exact (top 3)');
-        getTopScorelines(goalLh,goalLa,3).forEach(s=>{html+=renderProbRow(`${s.h}-${s.a}`,s.p);});
-        try{
-          const ctx=await getMatchContext(fixture);
-          html+=renderMatchContext(ctx,home.name,away.name);
-        }catch(e){ console.warn(`[pronos] Contexte additionnel indisponible pour fixture ${fixture.fixture.id} :`, e.message); }
-      }
-      container.dataset.loaded="true";
-    }
-    container.innerHTML=html;container.style.display="block";
-    btn.textContent=live?"🔄 Recalculer":"🙈 Masquer";
-    btn.className=live?"pred-btn live-btn":"pred-btn";
-  } catch(e) {
-    container.innerHTML=`<div style="color:#9b2c2c;font-size:12px;">⚠️ Erreur : ${e.message}</div>`;
-    container.style.display="block";btn.textContent="👁 Analyser";
-  } finally {btn.disabled=false;}
-}
-
-function renderMatch(fixture) {
-  const home=fixture.teams.home,away=fixture.teams.away;
-  const kickoff=new Date(fixture.fixture.date);
-  const timeStr=kickoff.toLocaleTimeString("fr-FR",{hour:"2-digit",minute:"2-digit"});
-  const elapsed=fixture.fixture.status.elapsed;
-  let tb;
-  if(isLive(fixture))tb=`<span class="badge-live">${elapsed?elapsed+"'":"Live"}</span>`;
-  else if(isFinished(fixture)){const sc=fixture.goals.home!==null?`${fixture.goals.home}-${fixture.goals.away}`:"FT";tb=`<span class="badge-done">✅ ${sc}</span>`;}
-  else tb=`<span class="time-badge">${timeStr}</span>`;
-  const ss=(isLive(fixture)||isFinished(fixture))&&fixture.goals.home!==null;
-  const card=document.createElement("div");card.className="card";card.id=`fixtureCard_${fixture.fixture.id}`;
-  card.innerHTML=`<div class="card-top"><span class="card-round">${fixture.league.round||""}</span>${tb}</div><div class="teams-row"><div class="team-block"><img src="${home.logo}" onerror="this.style.display='none'" style="width:20px;height:20px;object-fit:contain;flex-shrink:0" alt=""/><span class="team-name">${home.name}</span></div><div class="score-block">${ss?`<span class="score">${fixture.goals.home}</span><span class="score-sep">-</span><span class="score">${fixture.goals.away}</span>`:`<span class="vs-text">VS</span>`}</div><div class="team-block away"><img src="${away.logo}" onerror="this.style.display='none'" style="width:20px;height:20px;object-fit:contain;flex-shrink:0" alt=""/><span class="team-name">${away.name}</span></div></div><button class="pred-btn${isLive(fixture)?" live-btn":""}">👁 Analyser</button><div class="predictions" style="display:none"></div>`;
-  const btn=card.querySelector(".pred-btn"),pc=card.querySelector(".predictions");
-  btn.addEventListener("click",()=>showPredictions(fixture,pc,btn));
-  return card;
-}
-
-function renderLeagueGroup(leagueName,countryName,fixtures,hasLive) {
-  const w=document.createElement("div");w.className="league-group";
-  const h=document.createElement("div");h.className="league-header"+(hasLive?" live-header":"");
-  h.innerHTML=`<span class="league-flag">${countryFlag(countryName)}</span><span class="league-title">${formatLeagueName(leagueName,countryName)}</span>${hasLive?`<span class="league-live-badge">LIVE</span>`:""}<span class="league-count${hasLive?" live-count":""}">${fixtures.length}</span><span class="league-chevron">▼</span>`;
-  const mc=document.createElement("div");mc.className="league-matches";
-  fixtures.forEach(f=>mc.appendChild(renderMatch(f)));
-  h.addEventListener("click",()=>{const o=mc.classList.toggle("open");h.querySelector(".league-chevron").classList.toggle("open",o);});
-  w.appendChild(h);w.appendChild(mc);return w;
-}
-
-function renderTab(fixtures) {
-  const ml=document.getElementById("matchList"),fn=document.getElementById("footerNote");
-  ml.innerHTML="";fn.innerHTML="";
-  if(fixtures.length===0){ml.innerHTML=`<div class="empty-tab">Aucun match dans cet onglet.</div>`;return;}
-  const bl={};
-  fixtures.forEach(f=>{const k=`${f.league.id}`;if(!bl[k])bl[k]={name:f.league.name,country:f.league.country,fixtures:[]};bl[k].fixtures.push(f);});
-  Object.values(bl).sort((a,b)=>leaguePriority(a.name)-leaguePriority(b.name)).forEach(g=>{
-    const hl=g.fixtures.some(f=>isLive(f));
-    g.fixtures.sort((a,b)=>{const pa=isLive(a)?0:isUpcoming(a)?1:2,pb=isLive(b)?0:isUpcoming(b)?1:2;if(pa!==pb)return pa-pb;return new Date(a.fixture.date)-new Date(b.fixture.date);});
-    ml.appendChild(renderLeagueGroup(g.name,g.country,g.fixtures,hl));
-  });
-  fn.innerHTML="🔥 +10% edge fort · ⚡ +6% solide · +3% léger. Joue avec prudence.";
-  fn.className="footer-note";
-}
-
-function switchTab(tab) {
-  currentTab=tab;
-  ["upcoming","live","done"].forEach(t=>document.getElementById(`tab${t.charAt(0).toUpperCase()+t.slice(1)}`).classList.toggle("active",t===tab));
-  let fx;
-  if(tab==="live")fx=allFixtures.filter(f=>isLive(f));
-  else if(tab==="upcoming")fx=allFixtures.filter(f=>isUpcoming(f));
-  else fx=allFixtures.filter(f=>isFinished(f));
-  renderTab(fx);
-  const lc=allFixtures.filter(f=>isLive(f)).length;
-  document.getElementById("tabLive").innerHTML=`<span class="live-dot"></span>EN DIRECT${lc>0?` (${lc})`:""}`;
-  document.getElementById("tabUpcoming").textContent=`AVANT-MATCH (${allFixtures.filter(f=>isUpcoming(f)).length})`;
-  document.getElementById("tabDone").textContent=`TERMINÉS (${allFixtures.filter(f=>isFinished(f)).length})`;
-  const scanBtn=document.getElementById("scanVBBtn");
-  scanBtn.style.display=tab==="upcoming"?"flex":"none";
-  const scanLiveBtn=document.getElementById("scanLiveVBBtn");
-  scanLiveBtn.style.display=tab==="live"?"flex":"none";
-  renderVBHighlightSection();
-  renderVBLiveHighlightSection();
-}
-
-async function loadFixtures(silent=false) {
-  const se=document.getElementById("status"),eb=document.getElementById("errorBox"),rb=document.getElementById("refreshBtn");
-  if(!silent){se.style.display="block";se.innerHTML='<span class="spin">🔄</span> Chargement...';eb.innerHTML="";document.getElementById("matchList").innerHTML="";}
-  try {
-    const [dateData,liveData]=await Promise.all([apiGet(`/fixtures?date=${todayISO()}`),apiGet(`/fixtures?live=all`).catch(()=>[])]);
-    const lm={};(liveData||[]).forEach(f=>{lm[f.fixture.id]=f;});
-    const merged=(dateData||[]).map(f=>lm[f.fixture.id]||f);
-    (liveData||[]).forEach(f=>{if(!merged.find(m=>m.fixture.id===f.fixture.id))merged.push(f);});
-    allFixtures=merged.sort((a,b)=>new Date(a.fixture.date)-new Date(b.fixture.date));
-    se.style.display="none";rb.style.display="flex";
-    switchTab(currentTab);
-  } catch(e) {
-    if(!silent){se.style.display="none";eb.innerHTML=`<div class="error-box">⚠️ Impossible de récupérer les matchs. ${e.message||''}</div>`;rb.style.display="flex";}
-  }
-}
-
-document.getElementById("dateLabel").textContent=new Date().toLocaleDateString("fr-FR",{weekday:"short",day:"numeric",month:"short"});
-loadFixtures();
-setInterval(()=>loadFixtures(true),2*60*1000);
-</script>
-</body>
-</html>
+        [{label:`Vainqueur 1ère MT : ${home.name}`,p:modelProbs.p1HH},{label:'Vainqueur 1ère MT : Nul',p:modelProbs.p1HD},{label:`Vainqueur 1ère MT : ${away.name}`,p:modelProbs.p1HA},{label:`Vainqueur 2ème MT : ${home.name}`,p:modelProbs.p2HH},{label:'Vainqueur 2ème MT : Nul',p:modelProbs.p2HD},{label:`Vainqueur 2ème MT : ${away.name}`,p:modelProbs.p2HA},{label:'But en 1ère MT (+0.5
