@@ -125,7 +125,7 @@
 <div id="quotaWarningBanner"></div>
 <div id="topRecommendationSection" style="padding:8px 12px 0;"></div>
 <div id="upcomingTimeFilterRow" style="padding:8px 12px 0;gap:6px;overflow-x:auto;"></div>
-<div id="appBuildTag" style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-31-quota-resilience</div>
+<div id="appBuildTag" style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-07-31-full-verification</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
@@ -3147,9 +3147,9 @@ function parseOdds1xbet(oddsData, homeName, awayName) {
 }
 
 // Extrait uniquement les cotes 1X2 du bookmaker "sharp" (Pinnacle) depuis la MÊME réponse déjà
-// récupérée pour 1xBet (parseOdds1xbet ci-dessus utilise déjà un repli sur item.bookmakers[0] si
-// 1xBet est absent — preuve que la réponse contient bien plusieurs bookmakers, pas juste celui
-// demandé en paramètre — donc aucun appel API supplémentaire n'est nécessaire ici). Volontairement
+// récupérée pour 1xBet (depuis le correctif du 29/07/2026, l'appel odds ne filtre plus par
+// bookmaker côté serveur — la réponse contient donc bien tous les bookmakers en un seul appel,
+// aucun appel API supplémentaire n'est nécessaire ici). Volontairement
 // minimal (juste 1X2, pas les 30+ marchés du parseur principal) : cette comparaison sert à détecter
 // un vrai edge de MARCHÉ, pas à recalibrer le modèle dessus.
 function parseSharpOdds(oddsData, homeName, awayName){
