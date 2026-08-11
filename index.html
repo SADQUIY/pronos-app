@@ -125,7 +125,7 @@
 <div id="quotaWarningBanner"></div>
 <div id="topRecommendationSection" style="padding:8px 12px 0;"></div>
 <div id="upcomingTimeFilterRow" style="padding:8px 12px 0;gap:6px;overflow-x:auto;"></div>
-<div id="appBuildTag" style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-08-10-live-lambda-no-double-count</div>
+<div id="appBuildTag" style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-08-11-align-analysis-with-scan</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
@@ -7225,14 +7225,41 @@ async function showPredictions(fixture,container,btn) {
       // ayant coûté un pari — gardé à titre indicatif ("avoir une idée"), jamais comme une
       // recommandation à suivre sans vérifier. Le garde-fou detectStaleLiveOdds bloque déjà les cas
       // les plus flagrants (fin de match + écart énorme) en amont, dans getLiveAnalysisForFixture.
-      html+=`<div style="font-size:12px;font-weight:800;color:#8a6d00;margin:14px 0 6px;">💰 Marchés rentables (edge vs cote 1xBet)</div>`;
-      html+=`<div style="font-size:11px;color:#4a6090;background:#eef1f7;border-radius:8px;padding:8px 10px;">Recommandation basée sur l'edge désactivée en direct depuis le 25/07/2026 (fiabilité des cotes live pas garantie). La cote reste visible à titre informatif dans "Marchés sûrs" et "Toutes les probabilités" plus haut.</div>`;
-      html+=`<div style="font-size:12px;font-weight:800;color:#6a3d9a;margin:14px 0 6px;">🎯 Meilleur Compromis (en direct)</div>`;
-      html+=`<div style="font-size:11px;color:#4a6090;background:#eef1f7;border-radius:8px;padding:8px 10px;">Même raison que ci-dessus — désactivé en direct depuis le 25/07/2026.</div>`;
-      html+=`<div style="font-size:12px;font-weight:800;color:#c9822a;margin:14px 0 6px;">⭐ Probabilité 85%+ & cote 1.6+ (en direct)</div>`;
-      html+=`<div style="font-size:11px;color:#4a6090;background:#eef1f7;border-radius:8px;padding:8px 10px;">Même raison — désactivé en direct depuis le 25/07/2026.</div>`;
-      html+=`<div style="font-size:12px;font-weight:800;color:#1f8a70;margin:14px 0 6px;">🛡️💰 Sûr & Rentable, cote 1.3+ (en direct)</div>`;
-      html+=`<div style="font-size:11px;color:#4a6090;background:#eef1f7;border-radius:8px;padding:8px 10px;">Même raison — désactivé en direct depuis le 25/07/2026.</div>`;
+      // INCOHÉRENCE CORRIGÉE le 11/08/2026 (repérée par l'utilisateur sur Fortis 1-0 Muras United) :
+      // le scan "Tout scanner" affichait un Compromis live (🎯 Kelly 0.5%) sur ce match ET l'enregistrait
+      // dans pronosLiveCompromiseTracker_v1, tandis que l'analyse individuelle du MÊME match affichait
+      // "désactivé en direct depuis le 25/07/2026". Deux chemins qui ne disaient pas la même chose.
+      // Origine : le 25/07 les catégories à edge ont été coupées en direct car les cotes live semblaient
+      // fausses ; le 03/08 on a découvert que la vraie cause était un bug de NOTRE parseur
+      // (/odds/live a un schéma sans clé `bookmakers`, toutes les cotes étaient jetées), corrigé, et les
+      // trackers live réactivés. Mais SEUL le chemin du scan a été réactivé — ce texte est resté figé sur
+      // une décision devenue caduque. Les ROI live mesurés depuis une semaine viennent précisément de ces
+      // trackers : la donnée existait, seule cette vue prétendait le contraire.
+      // Réalignement demandé explicitement par l'utilisateur (option 1 : aligner l'analyse sur le scan).
+      // Les mêmes réserves qu'ailleurs restent affichées : edges live indicatifs, à vérifier sur 1xBet.
+      const liveCatSections=[
+        {titre:'💰 Marchés rentables (edge vs cote 1xBet)', couleur:'#8a6d00', items:liveValueBets,
+         rec:vb=>recordLiveValueBet(fixture,vb), metric:vb=>`cote ${vb.odd} · +${vb.edge}%`},
+        {titre:'🎯 Meilleur Compromis (en direct)', couleur:'#6a3d9a', items:liveCompromiseBets,
+         rec:cb=>recordLiveCompromiseBet(fixture,cb), metric:cb=>`Kelly ${cb.kellyFull}%`},
+        {titre:'⭐ Probabilité 85%+ & cote 1.6+ (en direct)', couleur:'#c9822a', items:liveHighProbGoodOdds,
+         rec:hb=>recordLiveHighProbBet(fixture,hb), metric:hb=>`${hb.modelProb}% · cote ${hb.odd}`},
+        {titre:'🛡️💰 Sûr & Rentable, cote 1.3+ (en direct)', couleur:'#1f8a70', items:liveSafeProfitable13,
+         rec:hb=>recordLiveSafe13Bet(fixture,hb), metric:hb=>`${hb.modelProb}% · cote ${hb.odd}`}
+      ];
+      liveCatSections.forEach(sec=>{
+        html+=`<div style="font-size:12px;font-weight:800;color:${sec.couleur};margin:14px 0 6px;">${sec.titre}</div>`;
+        const items=sec.items||[];
+        if(items.length===0){
+          html+=`<div class="no-odds">Rien sur ce marché pour l'instant sur ce match.</div>`;
+          return;
+        }
+        // Même enregistrement que le chemin du scan : sans ça, ouvrir un match manuellement produirait
+        // un affichage sans trace dans les trackers, et les deux chemins divergeraient à nouveau.
+        items.forEach(sec.rec);
+        html+=items.map(it=>`<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #f0f2f5;"><div style="flex:1;min-width:0;"><span style="font-size:13px;font-weight:700;">${it.market}</span><span style="font-size:12px;color:#4a6090;"> : ${it.pick}</span></div><span style="font-size:12px;font-weight:800;color:${sec.couleur};white-space:nowrap;">${sec.metric(it)}</span></div>`).join("");
+      });
+      html+=`<div style="font-size:10px;color:#b08900;margin-top:8px;line-height:1.35;">⚠️ Ces catégories comparent le modèle à une cote en direct : vérifie la cote sur 1xBet avant d'agir, elle peut avoir bougé depuis le calcul.</div>`;
       try{
         const ctx=await getMatchContext(fixture);
         html+=renderMatchContext(ctx,home.name,away.name);
