@@ -125,7 +125,7 @@
 <div id="quotaWarningBanner"></div>
 <div id="topRecommendationSection" style="padding:8px 12px 0;"></div>
 <div id="upcomingTimeFilterRow" style="padding:8px 12px 0;gap:6px;overflow-x:auto;"></div>
-<div id="appBuildTag" style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-08-11-mybets-autocomplete</div>
+<div id="appBuildTag" style="text-align:center;font-size:10px;color:#b0b8c4;padding:3px 0;background:#f4f6f9;">build v2026-08-11-mybets-autofill-on-open</div>
 <div class="content">
   <div id="status" class="status"><span class="spin">🔄</span> Chargement...</div>
   <div id="errorBox"></div>
@@ -697,7 +697,14 @@ function renderDebugLog(){
 function toggleDebugPanel(){
   const panel=document.getElementById('debugPanel'); if(!panel) return;
   const open=panel.classList.toggle('open');
-  if(open){ renderDebugLog(); debugUnread=0; updateDebugBadge(); renderVBTrackerPanel(); renderCompromiseTrackerPanel(); renderHighProbTrackerPanel(); renderReliableTrackerPanel(); renderLiveSafeTrackerPanel(); renderLiveVBTrackerPanel(); renderLiveCompromiseTrackerPanel(); renderLiveHighProbTrackerPanel(); renderBrierPanel(); renderLiveBrierPanel(); renderErrorAnalysisPanel(); renderXGBPanel(); }
+  // renderMyBetsPanel() ajouté le 11/08/2026 : oublié dans cette liste au moment de créer la
+  // fonctionnalité. Conséquence trouvée par l'utilisateur : le panneau affichait son texte statique
+  // par défaut à l'ouverture, et la <datalist> d'autocomplétion — remplie par refreshMyBetMatchList(),
+  // appelée uniquement DEPUIS renderMyBetsPanel() — restait vide tant qu'on n'avait pas cliqué
+  // "Actualiser" au moins une fois. Taper "k" ne proposait donc rien, même avec Kairat Almaty en direct
+  // à l'instant, alors que allFixtures le contenait bel et bien : la donnée était là, seulement jamais
+  // servie à la liste.
+  if(open){ renderDebugLog(); debugUnread=0; updateDebugBadge(); renderMyBetsPanel(); renderVBTrackerPanel(); renderCompromiseTrackerPanel(); renderHighProbTrackerPanel(); renderReliableTrackerPanel(); renderLiveSafeTrackerPanel(); renderLiveVBTrackerPanel(); renderLiveCompromiseTrackerPanel(); renderLiveHighProbTrackerPanel(); renderBrierPanel(); renderLiveBrierPanel(); renderErrorAnalysisPanel(); renderXGBPanel(); }
 }
 function clearDebugLog(){ debugLog=[]; renderDebugLog(); }
 async function copyDebugLog(){
