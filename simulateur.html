@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Carnet — simulation sans argent</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📓</text></svg>">
+<style>
+/* ============================================================================
+   CARNET DE SIMULATION — application autonome, volontairement séparée de
+   "Value Bets 1xBet". Aucune donnée partagée : clé de stockage distincte, donc
+   les 2 Mo d'historique et les 10 trackers de l'app principale ne la ralentissent
+   jamais. Rien ici n'appelle d'API : tout est saisi à la main, tout reste local.
+
+   Parti pris visuel : un carnet de comptes tenu à la main. Papier ligné, encre
+   bleu-noir, chiffres à la machine à écrire, rouge de correction pour les pertes.
+   Rien de "produit de paris" — c'est un registre, pas un casino.
+   ============================================================================ */
+:root{
+  --papier:#f5f2e8;      /* papier crème */
+  --ligne:#dcd6c4;       /* lignes du carnet */
+  --encre:#1c2a3a;       /* encre bleu-noir */
+  --encre-pale:#6b7a8c;
+  --rouge:#a8332a;       /* rouge de correction */
+  --vert:#2f6b4f;        /* vert comptable */
+  --marge:#c2694f;       /* filet de marge */
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{
+  margin:0;
+  background:var(--papier);
+  background-image:repeating-linear-gradient(to bottom,transparent 0,transparent 31px,var(--ligne) 31px,var(--ligne) 32px);
+  color:var(--encre);
+  font-family:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;
+  font-size:16px;line-height:32px;
+  padding:0 0 80px;
+}
+.marge{position:fixed;left:38px;top:0;bottom:0;width:1px;background:var(--marge);opacity:.35;pointer-events:none}
+.wrap{max-width:620px;margin:0 auto;padding:0 18px 0 54px}
+header{padding:26px 0 8px}
+h1{font-size:25px;line-height:32px;margin:0;font-weight:600;letter-spacing:-.01em}
+.sub{font-size:13px;line-height:20px;color:var(--encre-pale);margin-top:2px}
+.chiffre{font-family:'SF Mono',ui-monospace,'Roboto Mono',Menlo,monospace;font-variant-numeric:tabular-nums}
+
+/* — bandeau solde — */
+.solde{border-top:2px solid var(--encre);border-bottom:1px solid var(--ligne);padding:14px 0;margin:12px 0 6px;display:flex;align-items:baseline;justify-content:space-between;gap:12px}
+.solde .val{font-size:34px;line-height:40px;font-weight:600}
+.solde .lbl{font-size:12px;line-height:16px;color:var(--encre-pale);text-transform:uppercase;letter-spacing:.09em}
+.pos{color:var(--vert)} .neg{color:var(--rouge)}
+
+/* — formulaire — */
+form{margin:16px 0 8px}
+.row{display:flex;gap:8px;margin-bottom:8px}
+input,select,button,textarea{font-family:inherit;font-size:15px}
+input,select{
+  width:100%;padding:9px 10px;border:1px solid var(--ligne);border-radius:2px;
+  background:rgba(255,255,255,.55);color:var(--encre);line-height:20px;
+}
+input:focus,select:focus{outline:2px solid var(--marge);outline-offset:1px;border-color:transparent}
+input::placeholder{color:var(--encre-pale);opacity:.7}
+button{cursor:pointer;border:none;border-radius:2px;padding:10px 14px;font-size:15px;line-height:20px}
+.btn-p{background:var(--encre);color:var(--papier);font-weight:600}
+.btn-p:active{background:#0f1a26}
+.btn-s{background:transparent;color:var(--encre);border:1px solid var(--ligne)}
+.mini{font-size:12px;line-height:16px;padding:5px 9px}
+
+/* — jambes du combiné — */
+.jambe{border-left:2px solid var(--marge);padding-left:10px;margin-bottom:8px}
+.jambe-t{font-size:11px;line-height:16px;text-transform:uppercase;letter-spacing:.09em;color:var(--encre-pale);margin-bottom:4px}
+
+/* — ticket — */
+.ticket{border-bottom:1px solid var(--ligne);padding:12px 0}
+.ticket-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.ticket-m{font-weight:600;font-size:16px;line-height:22px}
+.ticket-d{font-size:12px;line-height:18px;color:var(--encre-pale)}
+.ticket-l{font-size:14px;line-height:22px;color:var(--encre-pale);padding-left:10px;border-left:1px solid var(--ligne);margin-top:4px}
+.res{font-size:14px;line-height:20px;font-weight:600}
+.actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+
+/* — bilan — */
+.bilan{border-top:2px solid var(--encre);margin-top:22px;padding-top:12px}
+.stat{display:flex;justify-content:space-between;gap:12px;font-size:15px;line-height:28px}
+.stat .k{color:var(--encre-pale)}
+.note{font-size:13px;line-height:20px;color:var(--encre-pale);margin-top:10px;padding-left:10px;border-left:2px solid var(--marge)}
+.vide{color:var(--encre-pale);font-size:15px;line-height:24px;padding:18px 0}
+h2{font-size:12px;line-height:16px;text-transform:uppercase;letter-spacing:.1em;color:var(--encre-pale);font-weight:600;margin:26px 0 6px}
+@media (prefers-reduced-motion:no-preference){.ticket{animation:apparait .18s ease-out}}
+@keyframes apparait{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="marge"></div>
+<div class="wrap">
+
+<header>
+  <h1>Carnet de simulation</h1>
+  <div class="sub">Aucun argent réel. Note ce que tu <em>aurais</em> joué, marque le résultat, et le carnet fait les comptes.</div>
+</header>
+
+<div class="solde">
+  <div>
+    <div class="lbl">Solde fictif</div>
+    <div class="val chiffre" id="solde">1 000</div>
+  </div>
+  <div style="text-align:right">
+    <div class="lbl">Départ</div>
+    <div class="chiffre" id="depart" style="font-size:18px;line-height:24px">1 000</div>
+  </div>
+</div>
+
+<form id="f" onsubmit="return false">
+  <div id="jambes"></div>
+  <div class="row">
+    <button type="button" class="btn-s mini" onclick="ajouterJambe()">+ Ajouter une sélection (combiné)</button>
+  </div>
+  <div class="row">
+    <input id="mise" type="number" inputmode="decimal" step="1" placeholder="Mise fictive" style="flex:1">
+    <button type="button" class="btn-p" onclick="enregistrer()" style="flex:1">Noter le pari</button>
+  </div>
+  <div class="sub" id="apercu"></div>
+</form>
+
+<h2>Tickets</h2>
+<div id="liste"></div>
+
+<div class="bilan" id="bilan"></div>
+
+<h2>Réglages</h2>
+<div class="row">
+  <button class="btn-s mini" onclick="exporter()">Exporter (.json)</button>
+  <button class="btn-s mini" onclick="reinitialiser()">Vider le carnet</button>
+</div>
+<div class="note" style="margin-bottom:30px">
+  Ce carnet est indépendant de l'application d'analyse : il a son propre stockage, ne charge aucun historique et n'appelle aucune API. C'est pour ça qu'il reste instantané.
+</div>
+
+</div>
+
+<script>
+/* ---------------------------------------------------------------------------
+   Stockage : clé dédiée. Volontairement AUCUN partage avec l'app principale —
+   un simulateur qui traîne 2 Mo d'historique cesse d'être un simulateur.
+   --------------------------------------------------------------------------- */
+const CLE='carnetSimulation_v1';
+const DEPART=1000;
+let jambes=1;
+
+function charger(){ try{ return JSON.parse(localStorage.getItem(CLE)||'[]'); }catch(e){ return []; } }
+function sauver(t){ localStorage.setItem(CLE, JSON.stringify(t)); }
+const nf=n=>n.toLocaleString('fr-FR',{maximumFractionDigits:2});
+
+/* Une jambe = une sélection. Un ticket à plusieurs jambes est un combiné :
+   les cotes se MULTIPLIENT, et il faut que TOUTES gagnent. C'est précisément
+   ce que la plupart des gens sous-estiment, donc l'aperçu l'affiche en clair. */
+function ajouterJambe(){ jambes++; rendreJambes(true); }
+function retirerJambe(i){ if(jambes<=1) return; jambes--; rendreJambes(true); }
+
+function rendreJambes(garder){
+  const vals=garder?[...document.querySelectorAll('.j-match')].map((e,i)=>({
+    m:e.value, p:document.querySelectorAll('.j-pari')[i].value, c:document.querySelectorAll('.j-cote')[i].value
+  })):[];
+  let h='';
+  for(let i=0;i<jambes;i++){
+    const v=vals[i]||{m:'',p:'',c:''};
+    h+=`<div class="jambe">
+      <div class="jambe-t">Sélection ${i+1}${jambes>1?` · <span style="cursor:pointer;text-decoration:underline" onclick="retirerJambe(${i})">retirer</span>`:''}</div>
+      <div class="row"><input class="j-match" placeholder="Match" value="${v.m.replace(/"/g,'&quot;')}"></div>
+      <div class="row">
+        <input class="j-pari" placeholder="Pari (ex : Over 1.5)" value="${v.p.replace(/"/g,'&quot;')}" style="flex:2">
+        <input class="j-cote" type="number" inputmode="decimal" step="0.001" placeholder="Cote" value="${v.c}" style="flex:1" oninput="apercu()">
+      </div>
+    </div>`;
+  }
+  document.getElementById('jambes').innerHTML=h;
+  document.querySelectorAll('.j-cote').forEach(e=>e.addEventListener('input',apercu));
+  apercu();
+}
+
+function coteTotale(){
+  let c=1, n=0;
+  document.querySelectorAll('.j-cote').forEach(e=>{ const v=parseFloat(e.value); if(v>1){ c*=v; n++; } });
+  return n?{cote:c,n}:null;
+}
+
+function apercu(){
+  const t=coteTotale(), mise=parseFloat(document.getElementById('mise').value);
+  const el=document.getElementById('apercu');
+  if(!t){ el.textContent=''; return; }
+  // Probabilité d'équilibre : 1/cote. Sur un combiné c'est le produit, donc ça
+  // s'effondre vite — l'afficher évite de découvrir le calcul après coup.
+  const seuil=100/t.cote;
+  let s=`Cote totale <b class="chiffre">${t.cote.toFixed(3)}</b> · pour être à l'équilibre il faut gagner <b class="chiffre">${seuil.toFixed(1)}%</b> du temps`;
+  if(mise>0) s+=` · gain si ça passe <b class="chiffre">+${nf(mise*(t.cote-1))}</b>`;
+  if(t.n>1) s+=`<br>Combiné de ${t.n} : les ${t.n} doivent gagner.`;
+  el.innerHTML=s;
+}
+document.getElementById('mise').addEventListener('input',apercu);
+
+function enregistrer(){
+  const matchs=[...document.querySelectorAll('.j-match')].map(e=>e.value.trim());
+  const paris=[...document.querySelectorAll('.j-pari')].map(e=>e.value.trim());
+  const cotes=[...document.querySelectorAll('.j-cote')].map(e=>parseFloat(e.value));
+  const mise=parseFloat(document.getElementById('mise').value);
+  const sel=[];
+  for(let i=0;i<matchs.length;i++){
+    if(!matchs[i]&&!paris[i]&&!(cotes[i]>1)) continue;
+    if(!matchs[i]||!paris[i]||!(cotes[i]>1)){
+      document.getElementById('apercu').innerHTML=`<span style="color:var(--rouge)">Sélection ${i+1} incomplète : il faut le match, le pari et une cote supérieure à 1.</span>`;
+      return;
+    }
+    sel.push({match:matchs[i],pari:paris[i],cote:cotes[i]});
+  }
+  if(!sel.length){ document.getElementById('apercu').innerHTML='<span style="color:var(--rouge)">Ajoute au moins une sélection.</span>'; return; }
+  if(!(mise>0)){ document.getElementById('apercu').innerHTML='<span style="color:var(--rouge)">Indique une mise fictive.</span>'; return; }
+  const t=charger();
+  t.unshift({id:Date.now(), le:Date.now(), sel, mise, resultat:null});
+  sauver(t);
+  document.getElementById('mise').value='';
+  jambes=1; rendreJambes(false);
+  rendre();
+}
+
+function marquer(id,r){
+  const t=charger(); const x=t.find(a=>a.id===id); if(!x) return;
+  x.resultat=r; sauver(t); rendre();
+}
+function supprimer(id){ sauver(charger().filter(a=>a.id!==id)); rendre(); }
+
+/* Profit en unités de mise. Un remboursement rend la mise : ni gain ni perte. */
+function profit(x){
+  const c=x.sel.reduce((a,s)=>a*s.cote,1);
+  if(x.resultat==='gagne') return x.mise*(c-1);
+  if(x.resultat==='perdu') return -x.mise;
+  return 0;
+}
+
+function rendre(){
+  const t=charger();
+  const regles=t.filter(x=>x.resultat==='gagne'||x.resultat==='perdu');
+  const net=regles.reduce((a,x)=>a+profit(x),0);
+  const solde=DEPART+net;
+  const s=document.getElementById('solde');
+  s.textContent=nf(solde);
+  s.className='val chiffre '+(net>0?'pos':net<0?'neg':'');
+  document.getElementById('depart').textContent=nf(DEPART);
+
+  document.getElementById('liste').innerHTML = t.length? t.map(x=>{
+    const c=x.sel.reduce((a,s)=>a*s.cote,1);
+    const p=profit(x);
+    const res = x.resultat==='gagne'?`<span class="res pos chiffre">+${nf(p)}</span>`
+              : x.resultat==='perdu'?`<span class="res neg chiffre">${nf(p)}</span>`
+              : x.resultat==='rembourse'?`<span class="res chiffre" style="color:var(--encre-pale)">0</span>`
+              : `<span class="res" style="color:var(--encre-pale)">en attente</span>`;
+    const d=new Date(x.le);
+    return `<div class="ticket">
+      <div class="ticket-h">
+        <div>
+          <div class="ticket-m">${x.sel.length>1?`Combiné de ${x.sel.length}`:x.sel[0].match}</div>
+          <div class="ticket-d chiffre">${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} · mise ${nf(x.mise)} · cote ${c.toFixed(3)}</div>
+        </div>${res}
+      </div>
+      ${x.sel.map(s=>`<div class="ticket-l">${s.match} — ${s.pari} <span class="chiffre">${s.cote}</span></div>`).join('')}
+      <div class="actions">${
+        x.resultat
+        ? `<button class="btn-s mini" onclick="marquer(${x.id},null)">annuler le résultat</button>`
+        : `<button class="btn-s mini" onclick="marquer(${x.id},'gagne')">gagné</button>
+           <button class="btn-s mini" onclick="marquer(${x.id},'perdu')">perdu</button>
+           <button class="btn-s mini" onclick="marquer(${x.id},'rembourse')">remboursé</button>`
+      }<button class="btn-s mini" onclick="supprimer(${x.id})">supprimer</button></div>
+    </div>`;
+  }).join('') : `<div class="vide">Rien de noté pour l'instant. Ajoute le premier pari que tu aurais joué.</div>`;
+
+  /* Bilan : ROI + intervalle de confiance. Sans l'intervalle, 10 paris gagnants
+     d'affilée ressemblent à une méthode qui marche. */
+  const b=document.getElementById('bilan');
+  if(!regles.length){ b.innerHTML='<div class="vide">Le bilan apparaît dès qu'+"'"+'un pari est marqué gagné ou perdu.</div>'; return; }
+  const mise=regles.reduce((a,x)=>a+x.mise,0);
+  const roi=net/mise*100;
+  const g=regles.filter(x=>x.resultat==='gagne').length;
+  const r=regles.map(x=>profit(x)/x.mise);
+  const m=r.reduce((a,b)=>a+b,0)/r.length;
+  const sd=Math.sqrt(r.reduce((a,v)=>a+(v-m)**2,0)/r.length), se=sd/Math.sqrt(r.length);
+  const lo=(m-1.96*se)*100, hi=(m+1.96*se)*100;
+  const verdict = r.length<30 ? 'Trop peu de paris pour conclure quoi que ce soit.'
+    : hi<0 ? 'Perdant, démontré : l'+"'"+'intervalle est entièrement négatif.'
+    : lo>0 ? 'Positif, démontré : l'+"'"+'intervalle est entièrement au-dessus de zéro.'
+    : 'Non concluant : l'+"'"+'intervalle contient encore zéro.';
+  b.innerHTML=`
+    <div class="stat"><span class="k">Paris réglés</span><span class="chiffre">${regles.length}</span></div>
+    <div class="stat"><span class="k">Réussite</span><span class="chiffre">${g}/${regles.length} · ${nf(g/regles.length*100)}%</span></div>
+    <div class="stat"><span class="k">Total misé</span><span class="chiffre">${nf(mise)}</span></div>
+    <div class="stat"><span class="k">Résultat net</span><span class="chiffre ${net>0?'pos':net<0?'neg':''}">${net>0?'+':''}${nf(net)}</span></div>
+    <div class="stat"><span class="k">ROI</span><span class="chiffre ${roi>0?'pos':roi<0?'neg':''}">${roi>0?'+':''}${nf(roi)}%</span></div>
+    <div class="stat"><span class="k">Intervalle 95%</span><span class="chiffre">${nf(lo)}% … ${nf(hi)}%</span></div>
+    <div class="note">${verdict}</div>`;
+}
+
+function exporter(){
+  const b=new Blob([JSON.stringify({exporte:new Date().toISOString(),tickets:charger()},null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download='carnet-simulation.json'; a.click();
+}
+function reinitialiser(){
+  if(confirm('Vider le carnet ? Tous les tickets notés seront perdus.')){ sauver([]); rendre(); }
+}
+
+rendreJambes(false);
+rendre();
+</script>
+</body>
+</html>
