@@ -1,0 +1,1074 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Probabilités — version légère</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚽</text></svg>">
+<style>
+/* ============================================================================
+   VERSION LÉGÈRE — 01/09/2026.
+   Construite après six tentatives infructueuses de corriger la lenteur de
+   l'application complète. L'export du 01/09 a donné la cause de fond : 25,66 M
+   de caractères stockés, dont plus de 20 M dans HUIT trackers de paris saturés
+   à 4000 entrées — ceux qui alimentaient les cinq catégories de recommandations
+   RETIRÉES LE 12/08. Trois semaines de poids mort, chargé et déchargé à chaque
+   opération.
+   Ce n'était donc pas un bug à trouver : c'était l'accumulation.
+
+   Cette version garde le MOTEUR À L'IDENTIQUE (fonctions recopiées verbatim
+   depuis index.html, correctifs de fuite temporelle inclus) et abandonne tout
+   l'appareil de mesure — qui a fini son travail : sur 421 matchs prospectifs,
+   le modèle est démontré moins bon que la cote 1xBet.
+
+   Stockage : AUCUN tracker. Seul le réglage du filtre de cotes est mémorisé.
+   ============================================================================ */
+:root{
+  --fond:#f7f8fa; --carte:#fff; --trait:#e3e7ee; --encre:#16233a; --pale:#6b7a92;
+  --vert:#1a6b3a; --jaune:#b08900; --rouge:#9b2c2c; --bleu:#1a3a6b;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:var(--fond);color:var(--encre);
+  font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  font-size:15px;line-height:1.5;padding-bottom:40px}
+header{background:var(--bleu);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:10}
+h1{margin:0;font-size:18px;font-weight:700}
+.sous{font-size:12px;opacity:.8;margin-top:2px}
+.onglets{display:flex;background:var(--bleu);padding:0 8px 8px;gap:6px;position:sticky;top:58px;z-index:9}
+.onglet{flex:1;background:rgba(255,255,255,.12);color:#fff;border:none;border-radius:8px;
+  padding:9px 4px;font-size:13px;font-weight:600;cursor:pointer}
+.onglet.actif{background:#fff;color:var(--bleu)}
+.wrap{max-width:640px;margin:0 auto;padding:12px}
+.ligue{background:var(--carte);border-radius:10px;margin-bottom:8px;overflow:hidden;border:1px solid var(--trait)}
+.ligue-t{padding:11px 13px;font-weight:600;font-size:14px;display:flex;justify-content:space-between;
+  align-items:center;cursor:pointer}
+.ligue-n{background:var(--bleu);color:#fff;border-radius:11px;padding:1px 8px;font-size:12px}
+.match{padding:10px 13px;border-top:1px solid var(--trait)}
+.match-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px}
+.match-e{flex:1;font-weight:500}
+.match-s{font-family:ui-monospace,monospace;font-weight:700;color:var(--rouge);white-space:nowrap}
+.match-t{font-size:12px;color:var(--pale);white-space:nowrap}
+.btn{width:100%;margin-top:8px;background:var(--bleu);color:#fff;border:none;border-radius:7px;
+  padding:9px;font-size:14px;font-weight:600;cursor:pointer}
+.btn:active{opacity:.85}
+.btn-s{background:transparent;color:var(--bleu);border:1px solid var(--trait)}
+.res{margin-top:10px;padding-top:10px;border-top:1px solid var(--trait)}
+.info{font-size:12px;color:var(--pale);line-height:1.5;margin-bottom:8px}
+.titre{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--pale);
+  font-weight:600;margin:10px 0 6px}
+.pr{padding:6px 0}
+.pr-h{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:14px}
+.cote{font-size:12px;font-weight:700;color:var(--vert);background:#e8f5ee;
+  padding:1px 7px;border-radius:8px;white-space:nowrap}
+.barre{height:5px;background:var(--trait);border-radius:3px;overflow:hidden;margin-top:4px}
+.barre>div{height:100%;border-radius:3px}
+.pct{font-size:13px;font-weight:700;min-width:38px;text-align:right}
+.sep{font-size:10px;color:var(--pale);border-top:1px dashed var(--trait);margin:9px 0 3px;padding-top:4px}
+.vide{color:var(--pale);font-size:14px;padding:22px 4px;text-align:center}
+.err{color:var(--rouge);font-size:13px;padding:10px 0}
+.reglage{background:var(--carte);border:1px solid var(--trait);border-radius:10px;padding:12px;margin-bottom:10px}
+.reglage input{width:66px;padding:6px 8px;border:1px solid var(--trait);border-radius:6px;font-size:14px}
+.avert{background:#fdf8ec;border-radius:8px;padding:9px 11px;font-size:12px;color:#8a6d00;
+  line-height:1.5;margin-bottom:10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚽ Probabilités</h1>
+  <div class="sous">version légère · <span id="build">build lite-2026-09-01</span></div>
+</header>
+<div class="onglets">
+  <button class="onglet actif" id="o-pre" onclick="onglet('pre')">Avant-match</button>
+  <button class="onglet" id="o-live" onclick="onglet('live')">En direct</button>
+</div>
+<div class="wrap">
+  <div class="avert">
+    Ces probabilités sont calculées sans utiliser les cotes. Mesuré sur 421 matchs : ce modèle est
+    <b>moins bon que la cote 1xBet</b>. Les pourcentages sont honnêtes, ils n'indiquent pas de pari rentable.
+  </div>
+  <div class="reglage">
+    <div style="font-size:13px;font-weight:600;margin-bottom:6px">Filtre de cotes</div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <label style="font-size:13px;display:flex;align-items:center;gap:6px">
+        <input type="checkbox" id="fActif" onchange="majFiltre()" style="width:auto"> actif
+      </label>
+      <input id="fMin" type="number" step="0.05" inputmode="decimal" onchange="majFiltre()">
+      <span style="font-size:13px;color:var(--pale)">à</span>
+      <input id="fMax" type="number" step="0.05" inputmode="decimal" onchange="majFiltre()">
+    </div>
+    <div style="font-size:11px;color:var(--pale);margin-top:6px">
+      Plage 1.4–1.8 : la moins mauvaise mesurée (−9,9 % contre −15,9 % pour « ≥ 1.4 » sans borne haute).
+    </div>
+  </div>
+  <div id="liste"><div class="vide">Chargement…</div></div>
+</div>
+<script>
+function poissonProb(lambda, k) { let p=Math.exp(-lambda); for(let i=0;i<k;i++) p*=lambda/(i+1); return p; }
+
+function buildScoreMatrix(lh, la, max=7) { const m=[]; for(let i=0;i<=max;i++){m[i]=[];for(let j=0;j<=max;j++)m[i][j]=poissonProb(lh,i)*poissonProb(la,j);} return m; }
+
+function dixonColesTau(x, y, lambda, mu, rho) {
+  if(x===0 && y===0) return 1 - lambda*mu*rho;
+  if(x===0 && y===1) return 1 + lambda*rho;
+  if(x===1 && y===0) return 1 + mu*rho;
+  if(x===1 && y===1) return 1 - rho;
+  return 1;
+}
+
+function buildDixonColesMatrix(lh, la, max=7, rho=getParam('dcRho',DIXON_COLES_RHO)) {
+  const m=buildScoreMatrix(lh, la, max);
+  for(let i=0;i<=1;i++) for(let j=0;j<=1;j++){ m[i][j] *= dixonColesTau(i,j,lh,la,rho); }
+  let total=0;
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++) total+=m[i][j];
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++) m[i][j]/=total;
+  return m;
+}
+
+function fuseMatrices(mA, mB, wA, wB){
+  const max=mA.length-1, out=[];
+  for(let i=0;i<=max;i++){ out[i]=[]; for(let j=0;j<=max;j++){ out[i][j]=wA*mA[i][j]+wB*mB[i][j]; } }
+  return out;
+}
+
+function computeCoreProbabilitiesFromMatrix(M, max) {
+  let pH=0,pD=0,pA=0,pBTTS=0,pNilNil=0,pSD=0;
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+    const p=M[i][j];
+    if(i>j)pH+=p;else if(i===j)pD+=p;else pA+=p;
+    if(i>0&&j>0)pBTTS+=p; if(i===0&&j===0)pNilNil+=p; if(i===j&&i>0)pSD+=p;
+  }
+  return {pH,pD,pA,pBTTS,pNilNil,pSD};
+}
+
+function computeModelProbabilities(lh, la, fusion=null) {
+  const rho=getParam('dcRhoPrematch',getParam('dcRho',DIXON_COLES_RHO));  // voir note ρ séparé (13/08/2026)
+  const M=fusion?fuseMatrices(buildScoreMatrix(lh,la), buildDixonColesMatrix(lh,la,7,rho), fusion.wPoisson, fusion.wDC):buildScoreMatrix(lh,la);
+  const FH=0.44;
+  // ============================================================================================
+  // INCOHÉRENCE DIXON-COLES ENTRE LE MATCH ET SES MOITIÉS — corrigée le 19/08/2026.
+  //
+  // La correction Dixon-Coles était appliquée TROIS fois de façon indépendante : sur la matrice du
+  // match entier (M), sur celle de la 1ère mi-temps (M1) et sur celle de la 2ème (M2). Ces trois
+  // corrections ne se recollent pas entre elles, et le modèle finissait par se contredire lui-même.
+  //
+  // Preuve arithmétique sur les données réelles du 19/08 (identité
+  // P(but 1ère MT) + P(but 2ème MT) − P(but dans chaque MT) = P(au moins 1 but)) :
+  //   RÉALITÉ : 76.6 + 81.9 − 63.8 = 94.7%, à comparer à 94.1% d'Over 0.5 réel → cohérent.
+  //   MODÈLE  : 66.3 + 74.6 − 49.9 = 91.0%, à comparer à 93.9% de SON PROPRE Over 0.5 → 2.9 pts d'écart.
+  //
+  // En Poisson pur l'identité est exacte : P(0 but en 1ère MT) × P(0 but en 2ème MT) = P(0 but au
+  // total), vérifié à 0.000 point près. C'est bien la correction DC appliquée séparément qui la casse,
+  // et l'ampleur suit directement ρ : +0.59 pt à ρ=+0.1, 0 à ρ=0, −1.62 pt à ρ=−0.30 (valeur active).
+  // Le passage de ρ de +0.1 à −0.30 le 13/08 a donc AGGRAVÉ le biais mi-temps que je surveillais
+  // depuis — et je l'avais attribué au hasard puis à une corrélation, sans voir la cause.
+  //
+  // Correctif PARTIEL, et il faut le dire : la correction DC (dont le rôle est de rattraper les scores
+  // serrés d'un MATCH) ne s'applique plus aux mi-temps, seulement à la matrice du match entier.
+  // ⚠️ MESURÉ APRÈS COUP : cela ne rétablit PAS l'identité, contrairement à ce que j'avais annoncé.
+  // Il reste 1.5 à 2 points d'écart, parce que la matrice du match entier garde la correction DC
+  // (qui gonfle son 0-0 de 6.08% à 7.85%) alors que les mi-temps sont désormais en Poisson pur.
+  // Vérifié : mi-temps Poisson vs match SANS DC → écart 0.0000 pt ; mi-temps Poisson vs match AVEC DC
+  // → écart 1.77 pt. **J'ai déplacé l'incohérence, je ne l'ai pas supprimée.**
+  // Ce qui est acquis quand même : la correction n'est plus appliquée DEUX fois sur le chemin des
+  // mi-temps, et les probabilités mi-temps se rapprochent nettement du réel (1ère MT 66.3 → 70.8
+  // contre 76.6 observé ; dans chaque MT 49.9 → 56.1 contre 63.8). Le biais est réduit d'environ un
+  // tiers, pas éliminé.
+  // Pour aller au bout il faudrait rendre DC cohérent entre les deux échelles de temps (par exemple
+  // en dérivant les mi-temps de la matrice du match plutôt qu'en les recalculant) — chantier à part,
+  // à ne pas improviser ici.
+  // ρ n'est PAS touché : il reste bénéfique là où il a été mesuré (Brier avant-match 0.6028 → 0.5891).
+  // ============================================================================================
+  const M1=buildScoreMatrix(lh*FH,la*FH);
+  const M2=buildScoreMatrix(lh*(1-FH),la*(1-FH));
+  const max=7;
+  let pH=0,pD=0,pA=0,pO05=0,pO15=0,pO25=0,pO35=0,pBTTS=0,pNilNil=0,pSD=0;
+  let p1HO05=0,p1HO15=0,p2HO05=0,p2HO15=0,pHScore05=0,pHScore15=0,pAScore05=0,pAScore15=0,pWTNH=0,pWTNA=0;
+  // Clean sheet (cage inviolée) : l'adversaire n'a marqué aucun but, quel que soit le résultat final
+  // (différent de "gagne sans encaisser" qui exige en plus la victoire). Pair/impair : parité du
+  // nombre total de buts sur le match complet.
+  let pCSH=0,pCSA=0,pOddTotal=0,pEvenTotal=0;
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+    const p=M[i][j];
+    if(i>j)pH+=p;else if(i===j)pD+=p;else pA+=p;
+    if(i+j>0)pO05+=p;if(i+j>1)pO15+=p;if(i+j>2)pO25+=p;if(i+j>3)pO35+=p;
+    if(i>0&&j>0)pBTTS+=p;if(i===0&&j===0)pNilNil+=p;if(i===j&&i>0)pSD+=p;
+    if(i>0)pHScore05+=p;if(i>1)pHScore15+=p;if(j>0)pAScore05+=p;if(j>1)pAScore15+=p;
+    if(i>j&&j===0)pWTNH+=p;if(j>i&&i===0)pWTNA+=p;
+    if(j===0)pCSH+=p; if(i===0)pCSA+=p;
+    if((i+j)%2===0)pEvenTotal+=p; else pOddTotal+=p;
+  }
+  // Vainqueur 1ère mi-temps / 2ème mi-temps considérée isolément (pas cumulée avec l'autre mi-temps),
+  // et "but marqué" par mi-temps (BTTS1H/BTTS2H), à partir des grilles M1/M2 déjà calculées plus haut
+  // pour le HT-FT (voir plus bas) — on les réutilise ici sans appel réseau supplémentaire.
+  let p1HH=0,p1HD=0,p1HA=0,pBTTS1H=0,pOddTotal1H=0,pEvenTotal1H=0;
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+    const p=M1[i][j];
+    if(i+j>0)p1HO05+=p;if(i+j>1)p1HO15+=p;
+    if(i>j)p1HH+=p;else if(i===j)p1HD+=p;else p1HA+=p;
+    if(i>0&&j>0)pBTTS1H+=p;
+    if((i+j)%2===0)pEvenTotal1H+=p; else pOddTotal1H+=p;
+  }
+  let p2HH=0,p2HD=0,p2HA=0,pBTTS2H=0,pOddTotal2H=0,pEvenTotal2H=0;
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+    const p=M2[i][j];
+    if(i+j>0)p2HO05+=p;if(i+j>1)p2HO15+=p;
+    if(i>j)p2HH+=p;else if(i===j)p2HD+=p;else p2HA+=p;
+    if(i>0&&j>0)pBTTS2H+=p;
+    if((i+j)%2===0)pEvenTotal2H+=p; else pOddTotal2H+=p;
+  }
+  const htftMap={};
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+    const p1=M1[i][j];if(!p1)continue;const htR=i>j?'1':i===j?'X':'2';
+    for(let k=0;k<=max;k++) for(let l=0;l<=max;l++){
+      const p2=M2[k][l];if(!p2)continue;
+      const ftR=(i+k)>(j+l)?'1':(i+k)===(j+l)?'X':'2';
+      htftMap[htR+'/'+ftR]=(htftMap[htR+'/'+ftR]||0)+p1*p2;
+    }
+  }
+  // First Half/Second Half Result (9 combinaisons) : marché demandé le 20/07/2026, tiré de
+  // l'inventaire 1xBet fourni par l'utilisateur. Différent de HT-FT ci-dessus : ici on compare le
+  // résultat de la 2e MI-TEMPS PRISE ISOLÉMENT (k vs l), pas le résultat CUMULÉ à la fin du match
+  // (i+k vs j+l) — même structure de boucle imbriquée, juste une comparaison différente à
+  // l'intérieur. ATTENTION (comme pour tout marché ajouté récemment) : le nom exact et le format de
+  // valeur des 9 combinaisons chez 1xBet n'ont pas été confirmés par une vraie capture — seul le
+  // calcul de probabilité ci-dessous est solide ; à activer d'abord dans "Marchés fiables" (qui ne
+  // nécessite aucune cote) plutôt que dans les catégories basées sur l'edge, en attendant
+  // confirmation — même précaution que celle qui aurait évité le problème du marché Handicap.
+  const fhshMap={};
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+    const p1=M1[i][j];if(!p1)continue;const fhR=i>j?'1':i===j?'X':'2';
+    for(let k=0;k<=max;k++) for(let l=0;l<=max;l++){
+      const p2=M2[k][l];if(!p2)continue;
+      const shR=k>l?'1':k===l?'X':'2';
+      fhshMap[fhR+'/'+shR]=(fhshMap[fhR+'/'+shR]||0)+p1*p2;
+    }
+  }
+  // Handicap : REFAIT le 20/07/2026 après un bug confirmé sur 2 matchs réels (Suduva Marijampole,
+  // Suruchi Sangha) — l'ancienne version générait des paliers fixes (-2,-1,+1,+2) sans jamais
+  // vérifier qu'ils existaient vraiment sur 1xBet (ex: "Handicap +2" affiché à 95-96% alors que la
+  // vraie grille du match sautait de 1(0) à 1(1.5), sans jamais passer par 1(1) ni 1(2)). Cette
+  // fois, on précalcule la probabilité pour TOUTE ligne possible par pas de 0.25 (de -5 à +5, la
+  // plage réaliste chez 1xBet), et seule la comparaison avec les vraies cotes scrapées pour CE match
+  // (voir parseOdds1xbet → result.handicapOdds, marché "Asian Handicap", format confirmé le
+  // 21/07/2026 par une vraie capture : "Home -1.25", "Away +0"...) déterminera quelles lignes sont
+  // effectivement proposées — jamais de ligne inventée. "push" (égalité exacte, pari remboursé) est
+  // mis de côté, seule "win" sert de probabilité de gain pour le calcul d'edge/Kelly.
+  const handicapProbs={};
+  for(const team of [1,2]){
+    for(let lineInt=-20;lineInt<=20;lineInt++){
+      const line=lineInt*0.25;
+      let win=0,push=0;
+      for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+        const p=M[i][j];
+        const adj=team===1?(i+line)-j:(j+line)-i;
+        if(adj>0)win+=p; else if(adj===0)push+=p;
+      }
+      handicapProbs[`${team}_${line.toFixed(2)}`]={win,push};
+    }
+  }
+  // Total par équipe (Total - Home / Total - Away) : ajouté le 21/07/2026 après confirmation du vrai
+  // nom de marché et du format ("Over 2.5"=1.81 etc., par pas de 0.5, jusqu'à 5.5+ selon le match)
+  // via une vraie capture — même principe que le Handicap : précalcule TOUTE ligne possible par pas
+  // de 0.5 (0 à 6), seules les lignes réellement proposées par 1xBet pour CE match
+  // (result.totalHomeOdds/totalAwayOdds) seront effectivement utilisées.
+  // CORRECTION DU 05/08/2026 — le push était compté comme une victoire sur les lignes ENTIÈRES.
+  // Cette boucle ne calculait que P(buts > ligne), et le site d'appel en déduisait "Under" par
+  // 1-pOver, ce qui vaut P(buts ≤ ligne) et englobe donc P(buts = ligne). Sur une ligne à virgule
+  // (1.5, 2.5...) c'est correct puisqu'aucun score ne tombe pile dessus. Sur une ligne ENTIÈRE
+  // (Under 1, Under 2, Under 3) le score exactement égal à la ligne est un PUSH — mise rendue, ni
+  // gagné ni perdu — et il était compté comme gagné.
+  // Vérifié sur les résultats réels du 05/08 (41 équipes visées par un "Under 1") : 41% n'ont pas
+  // marqué, 37% ont marqué exactement 1 (push), 22% ont marqué 2+. Le modèle annonçait 74-88% de
+  // réussite ; P(0)+P(1) = 78% colle exactement, P(0) seul = 41% aussi. Le λ du modèle est donc
+  // JUSTE (≈1.05 but/équipe, conforme au réel) — c'est bien ce cumul du push qui gonflait tout.
+  // Conséquence : le bookmaker, lui, price déjà le push dans sa cote ; comparer P(gagne)+P(push) à
+  // 1/cote fabriquait un edge fantôme sur toutes les lignes entières. C'est ce qui explique que la
+  // quasi-totalité des value bets avant-match soient des "Total {équipe} Under 1/2/3".
+  const teamTotalProbs={home:{},away:{}};
+  for(let lineInt=0;lineInt<=12;lineInt++){
+    const line=lineInt*0.5;
+    let overHome=0,pushHome=0,overAway=0,pushAway=0;
+    for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+      const p=M[i][j];
+      if(i>line)overHome+=p; else if(i===line)pushHome+=p;
+      if(j>line)overAway+=p; else if(j===line)pushAway+=p;
+    }
+    teamTotalProbs.home[line.toFixed(2)]={over:overHome, push:pushHome, under:Math.max(0,1-overHome-pushHome)};
+    teamTotalProbs.away[line.toFixed(2)]={over:overAway, push:pushAway, under:Math.max(0,1-overAway-pushAway)};
+  }
+  let pWBH=0,pWBA=0,pDB=0,pBEH=0,pGoalBothHalves=0;
+  for(let i=0;i<=max;i++) for(let j=0;j<=max;j++){
+    const p1=M1[i][j];if(!p1)continue;
+    for(let k=0;k<=max;k++) for(let l=0;l<=max;l++){
+      const p2=M2[k][l];if(!p2)continue;const w=p1*p2;
+      if(i>j&&k>l)pWBH+=w;if(i<j&&k<l)pWBA+=w;if(i===j&&k===l)pDB+=w;if(i>0&&j>0&&k>0&&l>0)pBEH+=w;
+      // "But dans chaque mi-temps" (peu importe qui marque) : au moins 1 but toutes équipes
+      // confondues en 1ère MT ET au moins 1 but toutes équipes confondues en 2ème MT — marché
+      // 1xBet réel ("Goal In Both Halves"), différent de BTTS qui exige que CHAQUE équipe marque.
+      if((i+j)>0 && (k+l)>0)pGoalBothHalves+=w;
+    }
+  }
+  // Handicap : DÉSACTIVÉ le 20/07/2026. Un utilisateur a rapporté un cas concret où "Handicap +2"
+  // était affiché à 95% dans "Marchés fiables" alors que 1xBet ne propose réellement aucune ligne
+  // au-delà de +1 (classique) / +0.75 (asiatique) pour ce match — les paliers fixes (-2,-1,+1,+2)
+  // qu'on générait ici n'ont jamais été recoupés avec les vraies lignes disponibles par match (les
+  // lignes de handicap varient d'un match à l'autre, contrairement aux autres marchés de ce fichier
+  // qui sont tous à ligne fixe). Retiré entièrement plutôt que rafistolé, en cohérence avec
+  // l'avertissement déjà noté à l'origine ("jamais confirmé par une vraie capture 1xBet").
+  return {pH,pD,pA,pO05,pO15,pO25,pO35,pBTTS,pNilNil,pSD,p1HO05,p1HO15,p2HO05,p2HO15,pHScore05,pHScore15,pAScore05,pAScore15,pWTNH,pWTNA,pWTNAny:pWTNH+pWTNA,htftMap,fhshMap,handicapProbs,teamTotalProbs,pWBH,pWBA,pDB,pBEH,pGoalBothHalves,
+    p1HH,p1HD,p1HA,p2HH,p2HD,p2HA,pCSH,pCSA,pOddTotal,pEvenTotal,pBTTS1H,pBTTS2H,pOddTotal1H,pEvenTotal1H,pOddTotal2H,pEvenTotal2H};
+}
+
+function probsFromLambdas(lh,la){
+  const M=buildScoreMatrix(lh,la,7); let h=0,d=0,a=0;
+  for(let i=0;i<=7;i++) for(let j=0;j<=7;j++){ const p=M[i][j]; if(i>j)h+=p; else if(i===j)d+=p; else a+=p; }
+  return [h,d,a];
+}
+
+function computeOddsFreeLambdas(homeForm, awayForm, homeId, awayId, beforeDate=null){
+  if(!homeForm || !awayForm) return null;
+  let lh=(homeForm.home.avgScored+awayForm.away.avgConceded)/2;
+  let la=(awayForm.away.avgScored+homeForm.home.avgConceded)/2;
+  lh*=teamFinishingFactor(homeId, beforeDate); la*=teamFinishingFactor(awayId, beforeDate);
+  // Fatigue : même seuil et même coefficient que le chemin existant du direct, pour ne pas inventer
+  // une deuxième convention concurrente dans la même app.
+  if(homeForm.restDays!==null && homeForm.restDays<3) lh*=0.92;
+  if(awayForm.restDays!==null && awayForm.restDays<3) la*=0.92;
+  return {lh:Math.max(0.15,lh), la:Math.max(0.15,la)};
+}
+
+function teamFinishingFactor(teamId, beforeDate){
+  // `beforeDate` dans le passé = on rejoue une prédiction historique -> profil inutilisable.
+  // Marge d'une journée : un match d'aujourd'hui reste traité comme du prospectif.
+  if(beforeDate){
+    const t=new Date(beforeDate).getTime();
+    if(isFinite(t) && t < Date.now()-24*3600*1000) return 1;
+  }
+  const p=loadTeamProfiles()[teamId];
+  if(!p || p.n<8 || !p.sot) return 1;
+  const conv=p.goals/p.sot;              // buts par tir cadré
+  const LIGUE_MOY=0.31;                  // ordre de grandeur habituel en football
+  return Math.max(0.85, Math.min(1.15, conv/LIGUE_MOY));
+}
+
+function buildPrematchRankingRows(modelProbs, goalLh, goalLa, home, away){
+  return [
+    {label:`Victoire ${home.name}`,p:modelProbs.pH},{label:'Match nul',p:modelProbs.pD},{label:`Victoire ${away.name}`,p:modelProbs.pA},
+    {label:`${home.name} ou Nul`,p:modelProbs.pH+modelProbs.pD},{label:`${home.name} ou ${away.name}`,p:modelProbs.pH+modelProbs.pA},{label:`Nul ou ${away.name}`,p:modelProbs.pD+modelProbs.pA},
+    {label:'BTTS Oui',p:modelProbs.pBTTS},{label:'Over 0.5',p:modelProbs.pO05},{label:'Over 1.5',p:modelProbs.pO15},{label:'Over 2.5',p:modelProbs.pO25},{label:'Over 3.5',p:modelProbs.pO35},{label:'0-0',p:modelProbs.pNilNil},{label:'Match nul avec buts',p:modelProbs.pSD},{label:'Total buts pair',p:modelProbs.pEvenTotal},{label:'Total buts impair',p:modelProbs.pOddTotal},
+    {label:`${home.name} marque`,p:modelProbs.pHScore05},{label:`${away.name} marque`,p:modelProbs.pAScore05},{label:`${home.name} gagne sans encaisser`,p:modelProbs.pWTNH},{label:`${away.name} gagne sans encaisser`,p:modelProbs.pWTNA},{label:`${home.name} garde sa cage inviolée`,p:modelProbs.pCSH},{label:`${away.name} garde sa cage inviolée`,p:modelProbs.pCSA},
+    {label:`Vainqueur 1ère MT : ${home.name}`,p:modelProbs.p1HH},{label:'Vainqueur 1ère MT : Nul',p:modelProbs.p1HD},{label:`Vainqueur 1ère MT : ${away.name}`,p:modelProbs.p1HA},{label:`Vainqueur 2ème MT : ${home.name}`,p:modelProbs.p2HH},{label:'Vainqueur 2ème MT : Nul',p:modelProbs.p2HD},{label:`Vainqueur 2ème MT : ${away.name}`,p:modelProbs.p2HA},
+    {label:'But en 1ère MT (+0.5)',p:modelProbs.p1HO05},{label:'But en 2ème MT (+0.5)',p:modelProbs.p2HO05},{label:'But dans chaque mi-temps',p:modelProbs.pGoalBothHalves},{label:'BTTS en 1ère MT',p:modelProbs.pBTTS1H},{label:'BTTS en 2ème MT',p:modelProbs.pBTTS2H},{label:`${home.name} gagne les 2 mi-temps`,p:modelProbs.pWBH},{label:`${away.name} gagne les 2 mi-temps`,p:modelProbs.pWBA},{label:'Match nul aux 2 mi-temps',p:modelProbs.pDB},
+    ...getTopScorelines(goalLh,goalLa,3).map(s=>({label:`Score exact ${s.h}-${s.a}`,p:s.p}))
+  ];
+}
+
+function deriveMarketCategory(label, homeName, awayName){
+  if(label===`Victoire ${homeName}`) return 'Victoire (domicile)';
+  if(label===`Victoire ${awayName}`) return 'Victoire (extérieur)';
+  if(label===`${homeName} ou Nul`) return 'Double Chance (domicile ou nul)';
+  if(label===`${awayName} ou Nul`) return 'Double Chance (extérieur ou nul)';
+  if(label===`${homeName} ou ${awayName}`) return 'Double Chance (1 ou 2)';
+  if(label===`Nul ou ${awayName}`) return 'Double Chance (nul ou extérieur)';
+  if(label===`${homeName} marque`) return 'Équipe marque (domicile)';
+  if(label===`${awayName} marque`) return 'Équipe marque (extérieur)';
+  if(label===`${homeName} gagne sans encaisser`) return 'Gagne sans encaisser (domicile)';
+  if(label===`${awayName} gagne sans encaisser`) return 'Gagne sans encaisser (extérieur)';
+  if(label===`${homeName} garde sa cage inviolée`) return 'Garde sa cage inviolée (domicile)';
+  if(label===`${awayName} garde sa cage inviolée`) return 'Garde sa cage inviolée (extérieur)';
+  if(label===`Vainqueur 1ère MT : ${homeName}`) return 'Vainqueur 1ère MT (domicile)';
+  if(label===`Vainqueur 1ère MT : ${awayName}`) return 'Vainqueur 1ère MT (extérieur)';
+  if(label===`Vainqueur 2ème MT : ${homeName}`) return 'Vainqueur 2ème MT (domicile)';
+  if(label===`Vainqueur 2ème MT : ${awayName}`) return 'Vainqueur 2ème MT (extérieur)';
+  if(label===`${homeName} gagne les 2 mi-temps`) return 'Gagne les 2 mi-temps (domicile)';
+  if(label===`${awayName} gagne les 2 mi-temps`) return 'Gagne les 2 mi-temps (extérieur)';
+  if(/^Score (exact|final) \d+-\d+$/.test(label)) return 'Score exact';
+  for(const [team,side] of [[homeName,'domicile'],[awayName,'extérieur']]){
+    if(label.startsWith(`${team} : plus de `) || label.startsWith(`${team} : moins de `)) return `Total buts équipe (${side}, seuil dynamique)`;
+  }
+  if(/^Total buts \(.+\) : (plus|moins) de /.test(label)) return 'Total buts mi-temps restante (live, seuil dynamique)';
+  if(/^(Plus|Moins) de .+ buts au total$/.test(label)) return 'Total buts (live, seuil dynamique)';
+  return label; // déjà générique (Over X.X, BTTS, Match nul, 0-0, pair/impair, buts par mi-temps...) — inchangé
+}
+
+function getTopScorelines(lh, la, n=3) {
+  const M=buildScoreMatrix(lh,la,6);
+  const list=[];
+  for(let i=0;i<=6;i++) for(let j=0;j<=6;j++) list.push({h:i,a:j,p:M[i][j]});
+  list.sort((a,b)=>b.p-a.p);
+  return list.slice(0,n);
+}
+
+async function _getTeamFormReseau(teamId, beforeDate) {
+  const data=await apiGet(`/fixtures?team=${teamId}&last=10`);
+  // ============================================================================================
+  // FUITE TEMPORELLE (look-ahead) CORRIGÉE le 29/08/2026 — signalée par une relecture externe.
+  //
+  // `beforeDate` n'était utilisé QUE pour les jours de repos (bloc plus bas). Les moyennes de buts,
+  // elles, prenaient les 10 derniers matchs renvoyés par l'API **sans filtrer sur la date**.
+  // Sur un match à venir c'est sans effet (rien de postérieur n'existe encore). Mais dès qu'on
+  // REJOUE une prédiction passée — c'est-à-dire dans tout le « Rattrapage historique » — la forme
+  // pouvait inclure des matchs joués APRÈS la date à prédire. Le modèle connaissait donc une partie
+  // de l'avenir, ce qui gonfle artificiellement ses performances mesurées.
+  //
+  // Exactement la même famille que la fuite H2H du 09/08 : à l'époque `getH2HRecord` a été corrigé,
+  // mais personne n'a vérifié l'autre source historique. **9e occurrence de la règle maîtresse**
+  // (« un composant survit à la migration de ce qu'il servait ») — ici : une correction appliquée
+  // à un endroit sans balayer les autres qui avaient le même défaut.
+  //
+  // Conséquence à retenir : toutes les mesures issues du rattrapage sont suspectes tant qu'elles
+  // n'ont pas été refaites après ce correctif. Celles issues du chemin PROSPECTIF ne le sont pas
+  // (au moment de la prédiction, aucun match postérieur n'existait) — d'où l'importance du
+  // marquage `viaBackfill` posé le 17/08 pour distinguer les deux.
+  // ============================================================================================
+  const cutoff=beforeDate?new Date(beforeDate).getTime():null;
+  const utilisables=(data||[]).filter(f=>{
+    if(!isFinished(f)||f.goals.home===null) return false;
+    if(cutoff!==null){
+      const t=f.fixture?new Date(f.fixture.date).getTime():NaN;
+      if(!isFinite(t) || t>=cutoff) return false;   // match postérieur (ou simultané) : invisible à la date de prédiction
+    }
+    return true;
+  });
+  let homeScored=[],homeConceded=[],awayScored=[],awayConceded=[];
+  utilisables.forEach(f=>{
+    if(f.teams.home.id===teamId){ homeScored.push(f.goals.home); homeConceded.push(f.goals.away); }
+    else if(f.teams.away.id===teamId){ awayScored.push(f.goals.away); awayConceded.push(f.goals.home); }
+  });
+  const avg=(arr,prior,priorWeight=3)=>(arr.reduce((s,v)=>s+v,0)+prior*priorWeight)/(arr.length+priorWeight);
+  // Jours de repos depuis le dernier match joué avant celui qu'on analyse — réutilise les mêmes
+  // données déjà récupérées, aucun appel réseau supplémentaire.
+  let restDays=null;
+  if(beforeDate){
+    const refTime=new Date(beforeDate).getTime();
+    const past=utilisables;   // déjà filtré sur la même règle : strictement antérieur à beforeDate
+    if(past.length){
+      const mostRecent=past.reduce((a,b)=>new Date(a.fixture.date)>new Date(b.fixture.date)?a:b);
+      restDays=(refTime-new Date(mostRecent.fixture.date).getTime())/(24*3600*1000);
+    }
+  }
+  return {
+    home:{avgScored:avg(homeScored,1.4), avgConceded:avg(homeConceded,1.1)},
+    away:{avgScored:avg(awayScored,1.1), avgConceded:avg(awayConceded,1.4)},
+    restDays
+  };
+}
+
+function isFinished(f) { return DONE_STATUSES.includes(f.fixture.status.short); }
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function oddsToProb(odds) { return odds > 1 ? 1/odds : 0; }
+
+function normalizeProbabilities(probs) { const t=probs.reduce((s,p)=>s+p,0); return t===0?probs:probs.map(p=>p/t); }
+
+function parseOdds1xbet(oddsData, homeName, awayName) {
+  if(!oddsData||oddsData.length===0)return null;
+  let bk=null;
+  for(const item of oddsData){const found=(item.bookmakers||[]).find(b=>b.id===BOOKMAKER_1XBET);if(found){bk=found;break;}}
+  // Repli sur bookmakers[0] retiré le 29/07/2026 : il datait de l'époque où l'appel filtrait déjà
+  // côté serveur sur BOOKMAKER_1XBET (défensif si l'API renvoyait quand même un autre bookmaker par
+  // défaut). Maintenant que l'appel renvoie TOUS les bookmakers (voir getValueBetsForFixture,
+  // correctif Pinnacle du même jour), garder ce repli substituerait silencieusement un AUTRE
+  // bookmaker à la place de 1xBet sans jamais le signaler — un vrai risque de fausser les cotes
+  // affichées/enregistrées. Si 1xBet n'est pas dans la réponse, on doit retourner null (déjà bien
+  // géré ailleurs : bascule sur l'estimation "forme récente", bandeau ⚠️ explicite).
+  if(!bk)return null;
+  // Diagnostic ajouté le 28/07/2026 : liste TOUS les bookmakers réellement présents dans la réponse
+  // (pas seulement celui qu'on a choisi ci-dessus) — sans ça, il était impossible de savoir avec
+  // certitude si Pinnacle (comparaison sharp) était vraiment absent d'un match donné, ou juste jamais
+  // logué (le diagnostic "marchés bruts" ci-dessous ne loggue que le bookmaker déjà sélectionné, il ne
+  // prouve rien sur les autres). Un seul item d'oddsData suffit en général (même fixture, un seul jeu
+  // de bookmakers), mais on balaie quand même tous les items par prudence.
+  const allBookmakers=[...new Set(oddsData.flatMap(item=>(item.bookmakers||[]).map(b=>`id=${b.id} ("${b.name}")`)))];
+  diagLog(`[pronos] Diag TOUS les bookmakers présents ${homeName} vs ${awayName} : ${allBookmakers.length?allBookmakers.join(' | '):'AUCUN'} — Pinnacle (id=${BOOKMAKER_SHARP}) ${allBookmakers.some(s=>s.startsWith(`id=${BOOKMAKER_SHARP} `))?'PRÉSENT':'ABSENT'} pour ce match.`);
+  // Diagnostic dédié : liste tous les noms de marché BRUTS réellement renvoyés par l'API pour ce
+  // bookmaker (1xBet si dispo, sinon le bookmaker de repli utilisé), match par match — pas une
+  // liste devinée ou copiée de la doc générale API-Football. Sert à savoir précisément quel
+  // sous-ensemble des marchés 1xBet (vus dans l'appli native) l'API expose réellement pour CE match,
+  // avant d'ajouter le support d'un nouveau marché (ex: Correct Score, Total 1/2, European/Asian
+  // Handicap) — évite de deviner un nom de marché qui n'existe pas côté API comme ça s'est produit
+  // avec "First Half Winner"/"Second Half Winner".
+  diagLog(`[pronos] Diag marchés bruts ${homeName} vs ${awayName} (bookmaker id=${bk.id}, nom API="${bk.name}") : ${(bk.bets||[]).map(b=>b.name).join(' | ')}`);
+  // Diagnostic dédié VALEURS (pas seulement noms) : pour ces 3 marchés identifiés le 21/07/2026
+  // comme ayant un nom différent de ce qui est codé (ou jamais codé), on logue le format exact de
+  // chaque ligne "value"/"odd" avant d'écrire le moindre code de parsing — même précaution que celle
+  // qui avait manqué la première fois sur le Handicap classique (nom ET format supposés à tort).
+  ['Asian Handicap','Total - Home','Total - Away','HT/FT Double','Home Team Total Goals(1st Half)','Away Team Total Goals(1st Half)'].forEach(betName=>{
+    const bet=bk.bets?.find(b=>b.name===betName);
+    if(bet) diagLog(`[pronos] Diag valeurs brutes "${betName}" ${homeName} vs ${awayName} : ${bet.values.map(v=>`"${v.value}"=${v.odd}`).join(' | ')}`);
+  });
+  const result={};
+  const getBet=(betName,valueName)=>{const bet=bk.bets?.find(b=>b.name===betName);if(!bet)return null;const v=bet.values?.find(v=>v.value===valueName||v.value?.toLowerCase()===valueName?.toLowerCase());return v?parseFloat(v.odd):null;};
+  result.home1x2=getBet('Match Winner','Home');result.draw1x2=getBet('Match Winner','Draw');result.away1x2=getBet('Match Winner','Away');
+  result.dc1x=getBet('Double Chance','Home/Draw');result.dc12=getBet('Double Chance','Home/Away');result.dcx2=getBet('Double Chance','Draw/Away');
+  ['0.5','1.5','2.5','3.5'].forEach(line=>{const key=line.replace('.','');result[`over${key}`]=getBet('Goals Over/Under',`Over ${line}`);result[`under${key}`]=getBet('Goals Over/Under',`Under ${line}`);});
+  result.bttsYes=getBet('Both Teams Score','Yes');result.bttsNo=getBet('Both Teams Score','No');
+  // Marchés de mi-temps ajoutés le 22/07/2026 : noms confirmés présents dans le dump de marchés
+  // bruts du 21/07/2026 ("Both Teams Score - First Half", "Both Teams To Score - Second Half" —
+  // remarque : le nom change légèrement entre les deux mi-temps côté API, pas une faute de frappe de
+  // notre part), format de valeur repris de leur équivalent match complet déjà confirmé (Yes/No,
+  // Home/Draw etc., Odd/Even) — à vérifier si jamais ces marchés n'apparaissent pas malgré leur
+  // présence dans le dump.
+  result.bttsYes1H=getBet('Both Teams Score - First Half','Yes');result.bttsNo1H=getBet('Both Teams Score - First Half','No');
+  result.bttsYes2H=getBet('Both Teams To Score - Second Half','Yes');result.bttsNo2H=getBet('Both Teams To Score - Second Half','No');
+  result.dc1H_1x=getBet('Double Chance - First Half','Home/Draw');result.dc1H_12=getBet('Double Chance - First Half','Home/Away');result.dc1H_x2=getBet('Double Chance - First Half','Draw/Away');
+  result.dc2H_1x=getBet('Double Chance - Second Half','Home/Draw');result.dc2H_12=getBet('Double Chance - Second Half','Home/Away');result.dc2H_x2=getBet('Double Chance - Second Half','Draw/Away');
+  result.ht_over05=getBet('First Half - Goals Over/Under','Over 0.5');result.ht_under05=getBet('First Half - Goals Over/Under','Under 0.5');
+  // Handicap : CORRIGÉ le 21/07/2026. Deux erreurs cumulées découvertes : (1) le bookmaker interrogé
+  // était en réalité Bet365 (id=8) et non 1xBet (id=11) jusqu'à cette date ; (2) même avec le bon
+  // bookmaker, 1xBet ne propose aucun marché nommé "Handicap" — le vrai nom est "Asian Handicap", et
+  // le format des valeurs est "Home -1.25" / "Away +0" (lignes par quart de but incluses), pas
+  // "1 (0)" comme supposé le 20/07. Confirmé par une vraie capture du journal de diagnostic.
+  const handicapBet=bk.bets?.find(b=>b.name==='Asian Handicap');
+  result.handicapOdds=handicapBet ? handicapBet.values.map(v=>{
+    const odd=parseFloat(v.odd);
+    const m=v.value.match(/^(Home|Away)\s*([+-]?[\d.]+)$/);
+    if(!m||isNaN(odd)) return null;
+    // Inversion de signe côté Away, CONFIRMÉE le 25/07/2026 par comparaison directe de captures
+    // d'écran (app vs vrai 1xBet) : l'API donne "Away +2" là où 1xBet affiche réellement "2(-2)" —
+    // 5 lignes Away vérifiées, 5 inversées, 100% des cas ; côté Home, toujours correct (0 inversion
+    // sur 5 lignes vérifiées). Cette convention de signe différente entre l'API et le vrai site
+    // explique très probablement le mystère des edges énormes sur Handicap équipe extérieure qu'on
+    // n'avait jamais réussi à élucider depuis le 21/07/2026 (le modèle comparait sa probabilité pour
+    // "+X" à la cote réelle de "-X", deux paris différents). On inverse donc le signe pour Away
+    // seulement, afin que h corresponde à la vraie convention 1xBet (utilisée aussi par
+    // handicapProbs, qui elle est calculée avec la bonne convention mathématique standard).
+    const team=m[1]==='Home'?1:2;
+    const hRaw=parseFloat(m[2]);
+    return {team, h:team===2?-hRaw:hRaw, odd, label:v.value};
+  }).filter(Boolean) : [];
+  // CONTRÔLE DE COHÉRENCE AJOUTÉ LE 04/08/2026 — remplace la confiance aveugle dans la convention de
+  // signe ci-dessus. Vérification terrain faite ce jour sur Sparta Praha vs Lyon (diagnostic brut de
+  // l'API comparé aux vraies cotes 1xBet, 14 lignes) : la convention codée est bien la bonne
+  // (domicile = même signe des deux côtés, extérieur = signe inversé ; écarts de 0.1 à 5.7%, tous
+  // dans le bruit normal entre deux instants). MAIS l'historique exporté contient encore des échelles
+  // impossibles APRÈS le correctif du 25/07 (ex. 01/08 Barnsley vs Lincoln : les deux équipes avec des
+  // cotes quasi identiques ET croissantes avec l'avantage). Cause de ces cas résiduels non identifiée.
+  // Plutôt que de deviner une 3e fois, on valide désormais chaque échelle par une règle que la réalité
+  // impose toujours : à handicap plus favorable, la cote doit BAISSER. Une échelle qui monte prouve
+  // que l'étiquette ne correspond pas au prix, quelle qu'en soit la raison — on l'écarte alors en
+  // entier pour ce match, sans chercher à la réparer. Il faut au moins 3 lignes pour juger ; en
+  // dessous, on écarte aussi (impossible de vérifier, et c'est exactement là qu'on s'est trompé
+  // jusqu'ici). Effet : le Handicap redevient exploitable sur les matchs vérifiables, et disparaît
+  // silencieusement sur les autres, au lieu du tout-ou-rien précédent.
+  const handicapLadderOK=(team)=>{
+    const lines=result.handicapOdds.filter(x=>x.team===team).sort((a,b)=>a.h-b.h);
+    if(lines.length<3) return false;
+    for(let i=0;i<lines.length-1;i++){ if(lines[i+1].odd>=lines[i].odd) return false; }
+    return true;
+  };
+  const okHome=handicapLadderOK(1), okAway=handicapLadderOK(2);
+  if(result.handicapOdds.length && !(okHome&&okAway)){
+    diagLog(`[pronos] Handicap ÉCARTÉ pour ${homeName} vs ${awayName} : l'échelle de cotes n'est pas décroissante quand le handicap devient plus favorable (domicile ${okHome?'OK':'INCOHÉRENT/insuffisant'}, extérieur ${okAway?'OK':'INCOHÉRENT/insuffisant'}) — ${result.handicapOdds.length} ligne(s) ignorée(s). Contrôle ajouté le 04/08/2026.`);
+    result.handicapOdds=[];
+  }
+  result.ht_over15=getBet('First Half - Goals Over/Under','Over 1.5');result.ht_under15=getBet('First Half - Goals Over/Under','Under 1.5');
+  result.sh_over05=getBet('Second Half - Goals Over/Under','Over 0.5');result.sh_over15=getBet('Second Half - Goals Over/Under','Over 1.5');
+  result.wtnHome=getBet('Win to Nil','Home');result.wtnAway=getBet('Win to Nil','Away');
+  result.scoreDraw=getBet('Score - Both Teams To Score','Yes');result.nilNil=getBet('Exact Score','0-0');
+  // Total par équipe : CORRIGÉ le 21/07/2026 — le vrai nom de marché est "Total - Home"/"Total - Away"
+  // (pas "{équipe} Total Goals" comme supposé avant), format "Over 2.5"=1.81/"Under 2.5"=1.90 par pas
+  // de 0.5, confirmé par une vraie capture. On lit TOUTES les lignes réellement proposées pour ce
+  // match (comme le Handicap), pas une ligne fixe.
+  const parseTotalBet=betName=>{
+    const bet=bk.bets?.find(b=>b.name===betName);
+    if(!bet) return [];
+    return bet.values.map(v=>{
+      const odd=parseFloat(v.odd);
+      const m=v.value.match(/^(Over|Under)\s*([\d.]+)$/);
+      if(!m||isNaN(odd)) return null;
+      return {over:m[1]==='Over', line:parseFloat(m[2]), odd};
+    }).filter(Boolean);
+  };
+  result.totalHomeOdds=parseTotalBet('Total - Home');
+  result.totalAwayOdds=parseTotalBet('Total - Away');
+  const findTotalLine=(arr,line)=>arr.find(x=>x.over&&Math.abs(x.line-line)<0.01)?.odd??null;
+  result.homeScore05=findTotalLine(result.totalHomeOdds,0.5);
+  result.awayScore05=findTotalLine(result.totalAwayOdds,0.5);
+  // HT/FT Double : CORRIGÉ le 21/07/2026 — le marché n'était jamais câblé (aucune clé o.htft_* n'était
+  // jamais remplie). Vrai nom "HT/FT Double", format "Home/Draw"=30.00 etc. (Home/Draw/Away pour la
+  // 1ère MT puis pour le score final), confirmé par une vraie capture.
+  result.htftOdds={};
+  const htftBet=bk.bets?.find(b=>b.name==='HT/FT Double');
+  if(htftBet){
+    const code=s=>s==='Home'?'1':s==='Draw'?'X':'2';
+    htftBet.values.forEach(v=>{
+      const m=v.value.match(/^(Home|Draw|Away)\/(Home|Draw|Away)$/);
+      if(!m) return;
+      result.htftOdds[`${code(m[1])}/${code(m[2])}`]=parseFloat(v.odd);
+    });
+  }
+  // --- Nouveaux marchés : noms de marché standards côté API-Football, à confirmer via le journal
+  // de diagnostic (voir commentaire dans findValueBets). Aucun risque si le nom est faux : getBet
+  // renvoie simplement null et le marché n'apparaît pas, sans casser le reste.
+  result.h1Home=getBet('First Half Winner','Home');result.h1Draw=getBet('First Half Winner','Draw');result.h1Away=getBet('First Half Winner','Away');
+  result.h2Home=getBet('Second Half Winner','Home');result.h2Draw=getBet('Second Half Winner','Draw');result.h2Away=getBet('Second Half Winner','Away');
+  result.oddTotal=getBet('Odd/Even','Odd');result.evenTotal=getBet('Odd/Even','Even');
+  result.oddTotal1H=getBet('Odd/Even - First Half','Odd');result.evenTotal1H=getBet('Odd/Even - First Half','Even');
+  result.oddTotal2H=getBet('Odd/Even - Second Half','Odd');result.evenTotal2H=getBet('Odd/Even - Second Half','Even');
+  result.csHome=getBet('Team Clean Sheet','Home');result.csAway=getBet('Team Clean Sheet','Away');
+  result.wbHome=getBet('To Win Both Halves','Home');result.wbAway=getBet('To Win Both Halves','Away');
+  result.goalBothHalves=getBet('Goal In Both Halves','Yes');
+  return result;
+}
+
+function evaluateAllMarkets(modelProbs, odds1xbet, homeName, awayName) {
+  const results=[];
+  function add(market,pick,modelProb,odd1xbet,pushProb=0){
+    if(!odd1xbet||odd1xbet<=1)return;
+    const impliedProb=oddsToProb(odd1xbet);
+    // `pushProb` ajouté le 05/08/2026 pour les marchés à ligne ENTIÈRE (Handicap, Total {équipe}),
+    // où un résultat exactement égal à la ligne rend la mise. L'espérance vaut alors
+    // P(gagne)·cote + P(push) − 1, ce qui est positif exactement quand P(gagne) + P(push)/cote
+    // dépasse 1/cote. On compare donc CE terme à la probabilité implicite, au lieu de faire comme si
+    // le push n'existait pas. `modelProb` reste la vraie probabilité de GAGNER, pour que la valeur
+    // affichée à l'utilisateur ne mente pas — seul l'edge intègre le push.
+    const edge=modelProb+(pushProb/odd1xbet)-impliedProb;
+    // Garde-fou de plausibilité ajouté le 21/07/2026, resserré le même jour après un 2e cas réel qui
+    // passait encore le premier seuil (Sogdiana vs Neftchi, Handicap +3.5, modèle 100%/cote 9.3 ; puis
+    // Saburtalo vs Slovan Bratislava, Handicap +2.5, modèle 97%/cote 6.7 — les deux fois sur des
+    // grandes lignes de Handicap pour l'équipe extérieure, sur des championnats mineurs peu connus).
+    // Relecture du code n'a pas trouvé de bug évident dans le parsing ni dans le calcul (max=7 buts
+    // dans la matrice, formule symétrique standard) — l'hypothèse la plus probable reste un désaccord
+    // réel modèle/marché sur ces championnats moins bien calibrés, pas une erreur de code identifiée.
+    // En attendant d'avoir plus de données pour trancher, seuil resserré à 92% (au lieu de 98.5%) :
+    // un désaccord aussi large entre modèle et marché ne reflète quasiment jamais un vrai edge.
+    // Corrigé une 2e fois le 21/07/2026 : un 3e cas réel (EVV vs MVV, Handicap +2.25, modèle 99% vs
+    // cote 1.98 ≈ 50% implicite, edge +49%) passait encore au travers car l'implicite n'était pas
+    // <50% — le vrai signal d'alerte est l'ÉCART entre modèle et marché, pas le niveau absolu de la
+    // cote implicite. Toujours 3 cas sur 3 en Handicap, équipe extérieure, grande ligne, championnat
+    // mineur — pattern trop répété pour être un simple hasard statistique, mais aucun bug de code
+    // identifié à la relecture (formule et parsing corrects) ; garde-fou basé sur l'écart en attendant
+    // d'avoir un diagnostic de valeurs brutes en direct sur un de ces matchs pour trancher.
+    if((modelProb>=0.90 && (modelProb-impliedProb)>=0.35) || (modelProb<=0.10 && (impliedProb-modelProb)>=0.35)){
+      diagLog(`[pronos] Edge implausible ignoré : ${market} "${pick}" — modèle ${(modelProb*100).toFixed(1)}% vs cote ${odd1xbet} (implicite ${(impliedProb*100).toFixed(1)}%). Probable bug plutôt que vrai edge.`);
+      return;
+    }
+    // EV : gain moyen attendu par unité misée, selon le modèle. Ex: EV=0.15 veut dire que pour
+    // chaque unité misée, on s'attend à gagner 0.15 unité en moyenne SI le modèle a raison.
+    const ev=modelProb*odd1xbet-1;
+    // Kelly plein (fraction du capital à miser en théorie) est souvent trop agressif en pratique
+    // (sensible à la moindre erreur de modèle) — on affiche le quart de Kelly, un compromis standard
+    // pour limiter la casse si le modèle se trompe, plafonné à 5% du capital par pari par prudence.
+    const kellyFull=(modelProb*odd1xbet-1)/(odd1xbet-1);
+    const kellyQuarter=Math.max(0,Math.min(0.05,kellyFull*0.25));
+    results.push({market,pick,modelProb,impliedProb,odd:odd1xbet,edge,ev,kellyQuarter,kellyFull});
+  }
+  const o=odds1xbet;
+  if(o.home1x2)add('Résultat (1X2)',`Victoire ${homeName}`,modelProbs.pH,o.home1x2);
+  if(o.draw1x2)add('Résultat (1X2)','Match nul',modelProbs.pD,o.draw1x2);
+  if(o.away1x2)add('Résultat (1X2)',`Victoire ${awayName}`,modelProbs.pA,o.away1x2);
+  if(o.dc1x)add('Double Chance',`${homeName} ou Nul`,modelProbs.pH+modelProbs.pD,o.dc1x);
+  if(o.dc12)add('Double Chance',`${homeName} ou ${awayName}`,modelProbs.pH+modelProbs.pA,o.dc12);
+  if(o.dcx2)add('Double Chance',`Nul ou ${awayName}`,modelProbs.pD+modelProbs.pA,o.dcx2);
+  // Double Chance / BTTS par mi-temps : ajoutés le 22/07/2026, mêmes probabilités que Vainqueur
+  // 1ère/2ème MT (p1HH/p1HD/p1HA, p2HH/p2HD/p2HA) et But marqué par mi-temps (pBTTS1H/pBTTS2H) déjà
+  // calculées plus haut — pas de nouveau calcul de modèle, juste de nouvelles combinaisons. Protégé
+  // (comme le HT-FT et le vainqueur par MT) : ces champs n'existent que dans le modèle avant-match.
+  if(modelProbs.p1HH!==undefined){
+    if(o.dc1H_1x)add('Double Chance (1ère MT)',`${homeName} ou Nul`,modelProbs.p1HH+modelProbs.p1HD,o.dc1H_1x);
+    if(o.dc1H_12)add('Double Chance (1ère MT)',`${homeName} ou ${awayName}`,modelProbs.p1HH+modelProbs.p1HA,o.dc1H_12);
+    if(o.dc1H_x2)add('Double Chance (1ère MT)',`Nul ou ${awayName}`,modelProbs.p1HD+modelProbs.p1HA,o.dc1H_x2);
+    if(o.dc2H_1x)add('Double Chance (2ème MT)',`${homeName} ou Nul`,modelProbs.p2HH+modelProbs.p2HD,o.dc2H_1x);
+    if(o.dc2H_12)add('Double Chance (2ème MT)',`${homeName} ou ${awayName}`,modelProbs.p2HH+modelProbs.p2HA,o.dc2H_12);
+    if(o.dc2H_x2)add('Double Chance (2ème MT)',`Nul ou ${awayName}`,modelProbs.p2HD+modelProbs.p2HA,o.dc2H_x2);
+  }
+  if(modelProbs.pBTTS1H!==undefined){
+    if(o.bttsYes1H)add('Les deux équipes marquent (1ère MT)','Oui',modelProbs.pBTTS1H,o.bttsYes1H);
+    if(o.bttsNo1H)add('Les deux équipes marquent (1ère MT)','Non',1-modelProbs.pBTTS1H,o.bttsNo1H);
+    if(o.bttsYes2H)add('Les deux équipes marquent (2ème MT)','Oui',modelProbs.pBTTS2H,o.bttsYes2H);
+    if(o.bttsNo2H)add('Les deux équipes marquent (2ème MT)','Non',1-modelProbs.pBTTS2H,o.bttsNo2H);
+  }
+  if(o.over05)add('Total buts','Over 0.5',modelProbs.pO05,o.over05);
+  if(o.under05)add('Total buts','Under 0.5',1-modelProbs.pO05,o.under05);
+  if(o.over15)add('Total buts','Over 1.5',modelProbs.pO15,o.over15);
+  if(o.under15)add('Total buts','Under 1.5',1-modelProbs.pO15,o.under15);
+  if(o.over25)add('Total buts','Over 2.5',modelProbs.pO25,o.over25);
+  if(o.under25)add('Total buts','Under 2.5',1-modelProbs.pO25,o.under25);
+  if(o.over35)add('Total buts','Over 3.5',modelProbs.pO35,o.over35);
+  if(o.under35)add('Total buts','Under 3.5',1-modelProbs.pO35,o.under35);
+  if(o.bttsYes)add('Les deux équipes marquent','Oui',modelProbs.pBTTS,o.bttsYes);
+  if(o.bttsNo)add('Les deux équipes marquent','Non',1-modelProbs.pBTTS,o.bttsNo);
+  if(o.wtnHome)add(`${homeName} gagne sans encaisser`,'Oui',modelProbs.pWTNH,o.wtnHome);
+  if(o.wtnAway)add(`${awayName} gagne sans encaisser`,'Oui',modelProbs.pWTNA,o.wtnAway);
+  if(o.scoreDraw)add('Match nul avec buts','Oui',modelProbs.pSD,o.scoreDraw);
+  if(o.nilNil)add('0-0','Oui',modelProbs.pNilNil,o.nilNil);
+  if(o.ht_over05)add('1ère MT Over 0.5','Oui',modelProbs.p1HO05,o.ht_over05);
+  if(o.goalBothHalves && modelProbs.pGoalBothHalves!==undefined)add('But dans chaque mi-temps','Oui',modelProbs.pGoalBothHalves,o.goalBothHalves);
+  if(o.ht_under05)add('1ère MT Under 0.5','Oui',1-modelProbs.p1HO05,o.ht_under05);
+  if(o.ht_over15)add('1ère MT Over 1.5','Oui',modelProbs.p1HO15,o.ht_over15);
+  if(o.ht_under15)add('1ère MT Under 1.5','Oui',1-modelProbs.p1HO15,o.ht_under15);
+  if(o.sh_over05)add('2ème MT Over 0.5','Oui',modelProbs.p2HO05,o.sh_over05);
+  // Handicap : parcourt UNIQUEMENT les lignes que 1xBet propose réellement pour ce match précis
+  // (o.handicapOdds), jamais une liste de lignes fixes générée à l'avance — c'est exactement ce qui
+  // manquait avant et causait le bug (lignes inexistantes affichées comme "fiables").
+  // 04/08/2026 — HANDICAP MIS EN QUARANTAINE. Preuve factuelle tirée de l'historique réel exporté
+  // (pas une supposition) : la cote enregistrée ne correspond PAS au pari étiqueté. Deux tests
+  // indépendants, tous deux insensibles au biais de sélection des trackers :
+  //   (1) Monotonie DANS UN MÊME match : sur les échelles de handicap à ≥3 lignes, la cote MONTE quand
+  //       l'avantage monte (ex. Newcastle Jets : +1.25→2.42 · +2→4.55 · +3→10 · +3.5→11). Un plus
+  //       gros avantage doit être MOINS cher, jamais plus. 99 échelles extérieur incohérentes contre
+  //       11 correctes, et 6 contre 6 côté domicile.
+  //   (2) Paris miroir : sur 60 cas où domicile ET extérieur ont une cote à la même ligne, 19 (32%)
+  //       ont des cotes quasi identiques (ex. Barnsley +2→9.1 et Lincoln +2→9.2). Deux paris dont
+  //       l'un gagne exactement quand l'autre perd ne peuvent pas être au même prix.
+  // Conséquence mesurée : edges affichés de 79 à 90% et un ROI apparent de +336% sur le tracker
+  // "Proba 85%+" — un artefact intégral. Le taux de réussite (93.6%) est réel mais serait payé ~1.05,
+  // pas 8.45.
+  // Pourquoi on ne "corrige" PAS le signe ici : l'inversion Away du 25/07/2026 (juste au-dessus, dans
+  // parseOdds1xbet) était déjà une correction de signe déduite d'un raisonnement plausible — et les
+  // données montrent qu'elle n'a pas réglé le problème, l'incohérence touchant AUSSI le côté domicile
+  // qu'elle ne modifie pas. Redeviner une convention de signe serait la troisième tentative du même
+  // type après celles du 21/07 et du 24/07. La convention réelle doit être LUE dans la réponse brute
+  // de l'API (diagnostic "Diag valeurs brutes \"Asian Handicap\"" déjà présent dans parseOdds1xbet,
+  // panneau debug), pas déduite. Tant que ce n'est pas fait, aucun pari Handicap n'est proposé ni
+  // enregistré : mieux vaut zéro donnée qu'une donnée fausse sur laquelle de l'argent réel est misé.
+  if(HANDICAP_EDGES_TRUSTED){
+    (o.handicapOdds||[]).forEach(h=>{
+      const key=`${h.team}_${h.h.toFixed(2)}`;
+      const hp=modelProbs.handicapProbs?.[key];
+      if(!hp) return;
+      const teamName=h.team===1?homeName:awayName;
+      // 05/08/2026 : hp.push était calculé mais jamais transmis — l'edge Handicap sur ligne entière
+      // était donc SOUS-estimé (biais prudent, inverse de celui des totaux par équipe).
+      add('Handicap', `${teamName} (${h.h>=0?'+':''}${h.h})`, hp.win, h.odd, hp.push);
+    });
+  } else if((o.handicapOdds||[]).length){
+    diagLog(`[pronos] Handicap ignoré (quarantaine du 04/08/2026, convention de signe non vérifiée) pour ${homeName} vs ${awayName} : ${o.handicapOdds.length} ligne(s) écartée(s). Les edges Handicap étaient démontrés faux (cote ne correspondant pas au pari étiqueté).`);
+  }
+  // Total par équipe : mêmes lignes que réellement proposées par 1xBet pour ce match (o.totalHomeOdds
+  // / totalAwayOdds), jamais une ligne inventée — même principe que le Handicap.
+  // 05/08/2026 : on passe désormais la probabilité de GAGNER (push exclu) et le push séparément,
+  // au lieu de `1-pOver` qui gonflait l'Under de toute la masse du push sur les lignes entières.
+  (o.totalHomeOdds||[]).forEach(t=>{
+    const tp=modelProbs.teamTotalProbs?.home[t.line.toFixed(2)];
+    if(!tp) return;
+    add(`Total ${homeName}`, `${t.over?'Over':'Under'} ${t.line}`, t.over?tp.over:tp.under, t.odd, tp.push);
+  });
+  (o.totalAwayOdds||[]).forEach(t=>{
+    const tp=modelProbs.teamTotalProbs?.away[t.line.toFixed(2)];
+    if(!tp) return;
+    add(`Total ${awayName}`, `${t.over?'Over':'Under'} ${t.line}`, t.over?tp.over:tp.under, t.odd, tp.push);
+  });
+  if(o.sh_over15)add('2ème MT Over 1.5','Oui',modelProbs.p2HO15,o.sh_over15);
+  if(o.homeScore05)add(`${homeName} marque`,'Oui',modelProbs.pHScore05,o.homeScore05);
+  if(o.awayScore05)add(`${awayName} marque`,'Oui',modelProbs.pAScore05,o.awayScore05);
+  // --- Marchés mi-temps, cage inviolée, pair/impair, gagne les 2 MT : les noms de marché ci-dessous
+  // ("First Half Winner", "Second Half Winner", "Odd/Even", "Team Clean Sheet", "To Win Both
+  // Halves") suivent la convention habituelle d'API-Football, mais n'ont pas pu être vérifiés
+  // contre une vraie réponse de l'API dans cette session (pas d'accès réseau ici). Si un de ces
+  // marchés ne remonte jamais de résultat alors que tu sais que 1xBet propose la cote, ouvre le
+  // journal 🐛 Debug sur un match qui a des cotes O/U (le diagnostic liste les clés reçues) et
+  // dis-moi le nom exact du marché — un seul mot à corriger dans parseOdds1xbet suffira.
+  // Vainqueur 1ère/2ème MT n'existe QUE dans le modèle avant-match (p1HH/p1HD/p1HA/p2HH/p2HD/p2HA) —
+  // protégé le 22/07/2026 pour la même raison que le HT-FT (voir plus haut) : ces champs sont
+  // undefined en direct, ce qui affichait un faux "undefined%" plutôt que d'exclure proprement.
+  if(modelProbs.p1HH!==undefined){
+    if(o.h1Home)add('Vainqueur 1ère MT',`${homeName}`,modelProbs.p1HH,o.h1Home);
+    if(o.h1Draw)add('Vainqueur 1ère MT','Nul',modelProbs.p1HD,o.h1Draw);
+    if(o.h1Away)add('Vainqueur 1ère MT',`${awayName}`,modelProbs.p1HA,o.h1Away);
+    if(o.h2Home)add('Vainqueur 2ème MT',`${homeName}`,modelProbs.p2HH,o.h2Home);
+    if(o.h2Draw)add('Vainqueur 2ème MT','Nul',modelProbs.p2HD,o.h2Draw);
+    if(o.h2Away)add('Vainqueur 2ème MT',`${awayName}`,modelProbs.p2HA,o.h2Away);
+  }
+  if(o.oddTotal)add('Total buts pair/impair','Impair',modelProbs.pOddTotal,o.oddTotal);
+  if(o.evenTotal)add('Total buts pair/impair','Pair',modelProbs.pEvenTotal,o.evenTotal);
+  // Odd/Even par mi-temps : même protection, pOddTotal1H/pEvenTotal1H/2H n'existent aussi que côté
+  // avant-match.
+  if(modelProbs.pOddTotal1H!==undefined){
+    if(o.oddTotal1H)add('Buts pair/impair (1ère MT)','Impair',modelProbs.pOddTotal1H,o.oddTotal1H);
+    if(o.evenTotal1H)add('Buts pair/impair (1ère MT)','Pair',modelProbs.pEvenTotal1H,o.evenTotal1H);
+    if(o.oddTotal2H)add('Buts pair/impair (2ème MT)','Impair',modelProbs.pOddTotal2H,o.oddTotal2H);
+    if(o.evenTotal2H)add('Buts pair/impair (2ème MT)','Pair',modelProbs.pEvenTotal2H,o.evenTotal2H);
+  }
+  if(o.csHome)add(`${homeName} garde sa cage inviolée`,'Oui',modelProbs.pCSH,o.csHome);
+  if(o.csAway)add(`${awayName} garde sa cage inviolée`,'Oui',modelProbs.pCSA,o.csAway);
+  if(o.wbHome)add(`${homeName} gagne les 2 mi-temps`,'Oui',modelProbs.pWBH,o.wbHome);
+  if(o.wbAway)add(`${awayName} gagne les 2 mi-temps`,'Oui',modelProbs.pWBA,o.wbAway);
+  const htftKeys={'1/1':`${homeName}/${homeName}`,'1/X':`${homeName}/Nul`,'X/X':'Nul/Nul','X/1':`Nul/${homeName}`,'X/2':`Nul/${awayName}`,'2/2':`${awayName}/${awayName}`,'2/X':`${awayName}/Nul`,'2/1':`${awayName}/${homeName}`,'1/2':`${homeName}/${awayName}`};
+  // HT-FT n'existe QUE dans le modèle avant-match (modelProbs.htftMap) — le modèle live n'a jamais
+  // cette donnée. Corrigé le 22/07/2026 : avant, en direct, htftMap était toujours undefined, donc
+  // "|| 0" affichait systématiquement un faux modèle à 0.0%, déclenchant le garde-fou "edge
+  // implausible" sur CHAQUE match en direct sans exception — pas un problème du match précis, un
+  // trou structurel. On exclut maintenant complètement ce marché en direct plutôt que de calculer un
+  // faux edge qui sera de toute façon ignoré.
+  if(modelProbs.htftMap){
+    Object.entries(htftKeys).forEach(([key,label])=>{if(o.htftOdds?.[key])add('HT-FT',label,modelProbs.htftMap[key]||0,o.htftOdds[key]);});
+  }
+  return results;
+}
+
+function buildOddsLookup(evaluated, parsed){
+  const map=new Map();
+  // BUG corrigé le 10/08/2026 : evaluateAllMarkets stocke la cote sous le champ `odd`, jamais
+  // `odd1xbet` (ce dernier n'est que le nom du PARAMÈTRE local à sa fonction add() interne, pas un
+  // champ du résultat retourné). Lu au mauvais endroit, la cote était toujours undefined et TOUTE
+  // ligne du classement affichait un tiret — jamais détecté en test parce que les tests précédents
+  // fabriquaient `evaluated` à la main avec le nom de champ `odd1xbet` au lieu d'appeler la vraie
+  // fonction. Signalé par l'utilisateur (capture d'écran : tiret gris sur 100% des lignes en direct),
+  // reproduit avec la vraie fonction avant de corriger.
+  (evaluated||[]).forEach(r=>{ if(r && r.odd>1) map.set(`${r.market}||${r.pick}`, r.odd); });
+  // Lignes Over/Under dynamiques (10/08/2026) — AFFICHAGE UNIQUEMENT.
+  // Ces cotes n'entrent volontairement PAS dans evaluateAllMarkets : le modèle ne produit pas de
+  // probabilité pour une ligne arbitraire par cette voie, donc calculer un edge dessus reviendrait
+  // à en inventer un. On se contente de rendre la cote VISIBLE à côté de la probabilité que le
+  // classement live calcule déjà de son côté (via totalDist). Aucun edge, aucun tracker, aucune
+  // recommandation n'est influencé — seul le tiret disparaît là où une vraie cote existe.
+  // `evaluated` reste prioritaire : on n'écrase jamais une entrée déjà posée ci-dessus.
+  Object.entries((parsed&&parsed.totalLines)||{}).forEach(([line,sides])=>{
+    if(sides.over>1 && !map.has(`Total buts||Over ${line}`)) map.set(`Total buts||Over ${line}`, sides.over);
+    if(sides.under>1 && !map.has(`Total buts||Under ${line}`)) map.set(`Total buts||Under ${line}`, sides.under);
+  });
+  return map;
+}
+
+function findOddForLabel(label, lookup, homeName, awayName){
+  if(!lookup || !lookup.size) return null;
+  const get=(market,pick)=>lookup.get(`${market}||${pick}`)||null;
+  // 1) Marchés dont le libellé du classement EST déjà le pick (1X2, Double Chance, Over/Under total)
+  for(const market of ['Résultat (1X2)','Double Chance','Total buts']){
+    const v=get(market,label); if(v) return v;
+  }
+  // 2) Marchés binaires dont le libellé du classement EST le nom du marché, pick 'Oui'
+  //    (ex: "Match nul avec buts", "0-0", "{équipe} marque", "{équipe} garde sa cage inviolée")
+  const asYes=get(label,'Oui'); if(asYes) return asYes;
+  // 3) Correspondances explicites : le libellé d'affichage diffère du couple (marché, pick)
+  const alias={
+    'BTTS Oui':['Les deux équipes marquent','Oui'],
+    'BTTS Non':['Les deux équipes marquent','Non'],
+    'BTTS en 1ère MT':['Les deux équipes marquent (1ère MT)','Oui'],
+    'BTTS en 2ème MT':['Les deux équipes marquent (2ème MT)','Oui'],
+    'But en 1ère MT (+0.5)':['1ère MT Over 0.5','Oui'],
+    'But en 2ème MT (+0.5)':['2ème MT Over 0.5','Oui'],
+    'But dans chaque mi-temps':['But dans chaque mi-temps','Oui'],
+    'Total buts pair':['Total buts pair/impair','Pair'],
+    'Total buts impair':['Total buts pair/impair','Impair'],
+    // Libellés propres au classement LIVE (buildLiveRankingRows), qui diffèrent de l'avant-match
+    'BTTS (les deux marquent)':['Les deux équipes marquent','Oui'],
+    'Total buts (final) pair':['Total buts pair/impair','Pair'],
+    'Total buts (final) impair':['Total buts pair/impair','Impair']
+  }[label];
+  if(alias){ const v=get(alias[0],alias[1]); if(v) return v; }
+  // 3bis) Le classement LIVE écrit "{extérieur} ou Nul", le marché 1xBet "Nul ou {extérieur}"
+  if(label===`${awayName} ou Nul`){ const v=get('Double Chance',`Nul ou ${awayName}`); if(v) return v; }
+  // 4) "Vainqueur 1ère/2ème MT : {X}" → marché "Vainqueur Nème MT", pick = X
+  let m=label.match(/^(Vainqueur (?:1ère|2ème) MT) : (.+)$/);
+  if(m){ const v=get(m[1],m[2]); if(v) return v; }
+  // 5) Libellés LIVE des totaux du match : "Plus de 2.5 buts au total" → ('Total buts','Over 2.5')
+  m=label.match(/^(Plus|Moins) de (\d+(?:\.\d+)?) buts? au total$/);
+  if(m){ const v=get('Total buts',`${m[1]==='Plus'?'Over':'Under'} ${m[2]}`); if(v) return v; }
+  // 6) Libellés LIVE par équipe : "{équipe} : plus de 1.5 but(s)" → ('Total {équipe}','Over 1.5')
+  m=label.match(/^(.+) : (plus|moins) de (\d+(?:\.\d+)?) but/);
+  if(m && (m[1]===homeName || m[1]===awayName)){
+    const v=get(`Total ${m[1]}`,`${m[2]==='plus'?'Over':'Under'} ${m[3]}`); if(v) return v;
+  }
+  return null; // marché sans cote proposée par 1xBet, ou non couvert : on n'affiche rien
+}
+
+function safeLog(p){ return Math.log(Math.max(1e-9, Math.min(1-1e-9, p))); }/* ---------------------------------------------------------------------------
+   Constantes reprises telles quelles de l'app complète — même passerelle, même
+   identifiant bookmaker déjà vérifié en production (1xBet = 11, confirmé le
+   21/07 : id=8 était Bet365).
+   --------------------------------------------------------------------------- */
+const API_BASE = "https://Sadquiy35--2a7ef21a6f6f11f1a7161607ee4eb77e.web.val.run";
+const BOOKMAKER_1XBET = 11;
+const DIXON_COLES_RHO = -0.13;
+const API_TIMEOUT_MS = 15000;
+const API_MIN_GAP_MS = 350;   // même prudence : la passerelle est partagée
+const STANDARD_TOTAL_LINES=[0.5,1.5,2.5,3.5], STANDARD_TEAM_LINES=[0.5,1.5,2.5];
+
+/* Réglages : SEULE chose écrite en stockage. Aucun tracker, aucun historique —
+   c'est précisément ce qui plombait l'app complète (25,66 M de caractères). */
+const CLE_FILTRE='liteFiltreCotes_v1';
+function chargerFiltre(){
+  try{ const o=JSON.parse(localStorage.getItem(CLE_FILTRE)||'null'); if(o&&typeof o.min==='number') return o; }catch(e){}
+  return {actif:false,min:1.4,max:1.8};
+}
+function sauverFiltre(o){ try{ localStorage.setItem(CLE_FILTRE, JSON.stringify(o)); }catch(e){} }
+/* getParam existe dans l'app complète (surcharges de paramètres). Ici il n'y a
+   pas de surcharges : on renvoie toujours la valeur par défaut, ce qui garde le
+   moteur recopié verbatim sans avoir à le modifier. */
+function getParam(k,d){ return d; }
+function loadTeamProfiles(){ return {}; }   /* pas de profil de finition stocké -> facteur neutre */
+function diagLog(){}                        /* le journal technique n'existe plus ici */
+
+/* --- Réseau : file simple, même espacement que l'app complète. Le délai couvre
+   TOUT le trajet (corps compris) — correctif du 28/08, sans lequel une réponse
+   volumineuse bloquait plusieurs dizaines de secondes. --------------------- */
+let dernierAppel=0;
+function dodo(ms){ return new Promise(r=>setTimeout(r,ms)); }
+async function apiGet(path){
+  const attente=Math.max(0, dernierAppel+API_MIN_GAP_MS-Date.now());
+  if(attente>0) await dodo(attente);
+  dernierAppel=Date.now();
+  const ctrl=new AbortController();
+  const t=setTimeout(()=>ctrl.abort(), API_TIMEOUT_MS);
+  try{
+    const res=await fetch(`${API_BASE}${path}`,{signal:ctrl.signal});
+    if(!res.ok) throw new Error(`Erreur ${res.status}`);
+    const j=await res.json();
+    return j.response||[];
+  }catch(e){
+    if(e.name==='AbortError') throw new Error('délai dépassé');
+    throw e;
+  }finally{ clearTimeout(t); }
+}
+async function getTeamForm(teamId, beforeDate){ return _getTeamFormReseau(teamId, beforeDate); }
+
+/* --- État --- */
+let ongletActif='pre', fixtures=null, ouverts={};
+
+function onglet(o){
+  ongletActif=o;
+  document.getElementById('o-pre').classList.toggle('actif',o==='pre');
+  document.getElementById('o-live').classList.toggle('actif',o==='live');
+  rendre();
+}
+const enCours=f=>['1H','2H','HT','ET','P','LIVE','BT'].includes(f.fixture.status.short);
+
+async function charger(){
+  const el=document.getElementById('liste');
+  el.innerHTML='<div class="vide">Chargement des matchs…</div>';
+  try{
+    const [jour,live]=await Promise.all([
+      apiGet(`/fixtures?date=${todayISO()}`),
+      apiGet(`/fixtures?live=all`).catch(()=>[])
+    ]);
+    const m={}; (live||[]).forEach(f=>m[f.fixture.id]=f);
+    const tout=(jour||[]).map(f=>m[f.fixture.id]||f);
+    (live||[]).forEach(f=>{ if(!tout.find(x=>x.fixture.id===f.fixture.id)) tout.push(f); });
+    fixtures=tout;
+    rendre();
+  }catch(e){
+    el.innerHTML=`<div class="err">Impossible de récupérer les matchs (${e.message}). Vérifie ta connexion et recharge.</div>`;
+  }
+}
+
+function rendre(){
+  const el=document.getElementById('liste');
+  if(!fixtures){ el.innerHTML='<div class="vide">Chargement…</div>'; return; }
+  const liste=fixtures.filter(f=>ongletActif==='live'?enCours(f):!enCours(f));
+  if(!liste.length){ el.innerHTML=`<div class="vide">Aucun match ${ongletActif==='live'?'en direct':'à venir'} pour l'instant.</div>`; return; }
+  const parLigue={};
+  liste.forEach(f=>{ const k=`${f.league.country} — ${f.league.name}`; (parLigue[k]=parLigue[k]||[]).push(f); });
+  let h='';
+  Object.entries(parLigue).sort((a,b)=>b[1].length-a[1].length).forEach(([ligue,ms])=>{
+    h+=`<div class="ligue"><div class="ligue-t" onclick="this.parentNode.querySelectorAll('.match').forEach(m=>m.style.display=m.style.display==='none'?'block':'none')">
+      <span>${ligue}</span><span class="ligue-n">${ms.length}</span></div>`;
+    ms.sort((a,b)=>new Date(a.fixture.date)-new Date(b.fixture.date)).forEach(f=>{
+      const id=f.fixture.id, live=enCours(f);
+      const t=live?`${f.fixture.status.elapsed}'`:new Date(f.fixture.date).toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+      h+=`<div class="match">
+        <div class="match-h">
+          <div class="match-e">${f.teams.home.name} — ${f.teams.away.name}</div>
+          ${live?`<div class="match-s">${f.goals.home}-${f.goals.away}</div>`:''}
+          <div class="match-t">${t}</div>
+        </div>
+        <button class="btn" onclick="analyser(${id},this)">Analyser</button>
+        <div class="res" id="r${id}" style="display:none"></div>
+      </div>`;
+    });
+    h+='</div>';
+  });
+  el.innerHTML=h;
+}
+
+async function analyser(id, btn){
+  const f=fixtures.find(x=>x.fixture.id===id); if(!f) return;
+  const box=document.getElementById('r'+id);
+  if(box.dataset.fait==='1'){
+    const v=box.style.display==='none';
+    box.style.display=v?'block':'none'; btn.textContent=v?'Masquer':'Analyser';
+    return;
+  }
+  btn.disabled=true; btn.textContent='Analyse…';
+  box.style.display='block';
+  box.innerHTML='<div class="info">Calcul en cours…</div>';
+  try{
+    const home=f.teams.home, away=f.teams.away;
+    const [hf,af]=await Promise.all([
+      getTeamForm(home.id,f.fixture.date), getTeamForm(away.id,f.fixture.date)
+    ]);
+    const free=computeOddsFreeLambdas(hf,af,home.id,away.id,f.fixture.date);
+    if(!free){ box.innerHTML='<div class="err">Pas assez de matchs récents connus pour ces équipes.</div>'; btn.disabled=false; btn.textContent='Analyser'; return; }
+    const probs=computeModelProbabilities(free.lh, free.la);
+    const rows=buildPrematchRankingRows(probs, free.lh, free.la, home, away)
+      .filter(r=>r.p!=null && !isNaN(r.p)).sort((a,b)=>b.p-a.p);
+    /* Le classement s'affiche AVANT les cotes : elles ne servent pas au calcul,
+       rien ne justifie d'attendre un téléchargement volumineux (leçon du 28/08). */
+    box.innerHTML=entete(free,hf,af,home,away)+`<div id="c${id}">${classement(rows,null,home.name,away.name)}</div>`;
+    box.dataset.fait='1';
+    btn.disabled=false; btn.textContent='Masquer';
+    try{
+      const od=await apiGet(`/odds?fixture=${id}&bookmaker=${BOOKMAKER_1XBET}`);
+      const p=parseOdds1xbet(od, home.name, away.name);
+      if(p){
+        const lk=buildOddsLookup(evaluateAllMarkets(probs,p,home.name,away.name), p);
+        const c=document.getElementById('c'+id);
+        if(c) c.innerHTML=classement(rows,lk,home.name,away.name);
+      }
+    }catch(e){ /* pas de cote : le classement reste lisible tel quel */ }
+  }catch(e){
+    box.innerHTML=`<div class="err">Erreur : ${e.message}</div>`;
+    btn.disabled=false; btn.textContent='Analyser';
+  }
+}
+
+function entete(free,hf,af,home,away){
+  const ing=[];
+  if(hf.restDays!==null && hf.restDays<3) ing.push(`${home.name} ${hf.restDays} j de repos`);
+  if(af.restDays!==null && af.restDays<3) ing.push(`${away.name} ${af.restDays} j de repos`);
+  return `<div class="info">Buts attendus : <b>${home.name} ${free.lh.toFixed(2)}</b> · <b>${away.name} ${free.la.toFixed(2)}</b>`+
+    (ing.length?`<br>${ing.join(' · ')}`:'')+`</div>`;
+}
+
+function classement(rows, lookup, hn, an){
+  const f=chargerFiltre();
+  let masquees=0;
+  const lignes=rows.map(r=>({r, odd:lookup?findOddForLabel(r.label,lookup,hn,an):null}));
+  const gardees=lignes.filter(({odd})=>{
+    if(!f.actif) return true;
+    if(odd==null){ masquees++; return false; }
+    const ok=odd>=f.min&&odd<=f.max; if(!ok) masquees++; return ok;
+  });
+  let h='<div class="titre">Du plus probable au moins probable</div>';
+  if(f.actif) h+=`<div class="info">Filtre actif ${f.min}–${f.max} · ${masquees} ligne(s) masquée(s).</div>`;
+  if(!gardees.length) return h+'<div class="vide">Aucune ligne dans la plage choisie.</div>';
+  let p70=false,p60=false;
+  gardees.forEach(({r,odd})=>{
+    const pct=Math.min(99,Math.max(1,Math.round(r.p*100)));   /* jamais 100% : leçon du 15/08 */
+    if(!p70&&pct<70){ p70=true; h+='<div class="sep">— en dessous de 70% —</div>'; }
+    if(!p60&&pct<60){ p60=true; h+='<div class="sep">— en dessous de 60% —</div>'; }
+    const col=pct>=65?'var(--vert)':pct>=50?'var(--jaune)':'var(--rouge)';
+    h+=`<div class="pr"><div class="pr-h">
+      <span style="flex:1">${r.label}</span>
+      ${odd?`<span class="cote">${odd}</span>`:''}
+      <span class="pct" style="color:${col}">${pct}%</span></div>
+      <div class="barre"><div style="width:${pct}%;background:${col}"></div></div></div>`;
+  });
+  return h;
+}
+
+function majFiltre(){
+  const f=chargerFiltre();
+  f.actif=document.getElementById('fActif').checked;
+  const mi=parseFloat(document.getElementById('fMin').value), ma=parseFloat(document.getElementById('fMax').value);
+  if(mi>1) f.min=mi;
+  if(ma>f.min) f.max=ma;
+  sauverFiltre(f);
+  document.querySelectorAll('.res[data-fait="1"]').forEach(b=>{ b.dataset.fait=''; b.innerHTML=''; b.style.display='none'; });
+  document.querySelectorAll('.btn').forEach(b=>{ if(b.textContent==='Masquer') b.textContent='Analyser'; });
+}
+
+(function init(){
+  const f=chargerFiltre();
+  document.getElementById('fActif').checked=f.actif;
+  document.getElementById('fMin').value=f.min;
+  document.getElementById('fMax').value=f.max;
+  charger();
+})();
+</script></body></html>
